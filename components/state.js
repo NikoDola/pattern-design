@@ -1,8 +1,25 @@
-export const NS    = 'http://www.w3.org/2000/svg';
-export const SLOT  = 10;
-export const COLS  = 100;
-export const ROWS  = 100;
-export const TOTAL = (COLS * ROWS) / 2;   // 5 000 active cells
+export const NS = 'http://www.w3.org/2000/svg';
+
+// ── Grid slot size (even, must divide 1000) ───────────────────────────────────
+export let SLOT  = (() => {
+  const s = +localStorage.getItem('pattern-designer-slot');
+  return isValidSlot(s) ? s : 10;
+})();
+export let COLS  = 1000 / SLOT;
+export let ROWS  = 1000 / SLOT;
+export let TOTAL = Math.ceil((COLS * ROWS) / 2);
+
+export function isValidSlot(v) {
+  return Number.isInteger(v) && v >= 2 && v % 2 === 0 && 1000 % v === 0;
+}
+
+export function setSlot(v) {
+  SLOT  = v;
+  COLS  = 1000 / v;
+  ROWS  = 1000 / v;
+  TOTAL = Math.ceil((COLS * ROWS) / 2);
+  localStorage.setItem('pattern-designer-slot', String(v));
+}
 
 const LS_SIZES = 'pattern-designer-sizes';
 export const SIZES = (() => {

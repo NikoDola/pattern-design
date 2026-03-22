@@ -1,10 +1,11 @@
-import { SIZES, pct, savePct, setSizes } from './state.js';
-import { generate } from './generate.js';
+import { SIZES, SLOT, pct, savePct, setSizes, setSlot, isValidSlot } from './state.js';
+import { generate, updateSubtitle } from './generate.js';
 import { push } from './history.js';
 import { showMaxTooltip } from './utils.js';
 
 export const sliderEls = {};
 export const numEls    = {};
+
 
 export function updateTotal() {
   const totalDisplay = document.getElementById('total-display');
@@ -18,6 +19,39 @@ export function updateTotal() {
 
 export function initSliders() {
   const controlsEl = document.getElementById('controls');
+
+  // ── Slot size input ─────────────────────────────────────────────────────────
+  const slotRow = document.createElement('div');
+  slotRow.className = 'sizes-config-row';
+
+  const slotLbl = document.createElement('label');
+  slotLbl.className = 'sizes-config-label';
+  slotLbl.textContent = 'Slot px';
+
+  const slotIn = document.createElement('input');
+  slotIn.type        = 'number';
+  slotIn.className   = 'sizes-config-input slot-input';
+  slotIn.value       = SLOT;
+  slotIn.min         = 2;
+  slotIn.step        = 2;
+  slotIn.title       = 'Even number that divides 1000 (e.g. 2, 4, 8, 10, 20, 40, 50, 100…)';
+
+  slotIn.addEventListener('change', () => {
+    const v = +slotIn.value;
+    if (!isValidSlot(v)) {
+      slotIn.value = SLOT;  // revert
+      return;
+    }
+    push();
+    setSlot(v);
+    slotIn.value = SLOT;
+    updateSubtitle();
+    generate();
+  });
+
+  slotRow.appendChild(slotLbl);
+  slotRow.appendChild(slotIn);
+  controlsEl.appendChild(slotRow);
 
   // ── Sizes config input ──────────────────────────────────────────────────────
   const configRow = document.createElement('div');
@@ -115,4 +149,5 @@ export function initSliders() {
 
   buildSliderRows();
   updateTotal();
+  updateSubtitle();
 }

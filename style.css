@@ -69,6 +69,7 @@ body {
   padding: 4px 7px;
 }
 .sizes-config-input:focus { outline: 1px solid #4f8ef7; }
+.slot-input { width: 60px; flex: none; text-align: center; }
 
 .size-row {
   display: grid;

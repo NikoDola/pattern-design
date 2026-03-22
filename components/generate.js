@@ -74,6 +74,12 @@ export function getSizeForDepth(depth, zones) {
   return pickFromDist(zones[zones.length - 1].dist);
 }
 
+// SLOT and TOTAL are live ES-module bindings — always current after setSlot()
+export function updateSubtitle() {
+  const el = document.querySelector('.subtitle');
+  if (el) el.textContent = `1000×1000 · ${TOTAL.toLocaleString()} slots · ${SLOT}px grid`;
+}
+
 export function generate() {
   const artboard  = document.getElementById('artboard');
   const rectColor = document.getElementById('rect-color').value;
@@ -162,4 +168,5 @@ export function generate() {
   }
 
   artboard.dispatchEvent(new CustomEvent('pattern:generated'));
+  updateSubtitle();
 }
