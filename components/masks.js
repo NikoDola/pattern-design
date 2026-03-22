@@ -55,6 +55,60 @@ export function initCanvasDelete() {
   artboard.addEventListener('pattern:generated', () => highlightSelected());
 }
 
+// ── Duplicate icon SVG ────────────────────────────────────────────────────────
+function makeDupIcon() {
+  const ns  = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 14 14');
+  svg.setAttribute('width', '13');
+  svg.setAttribute('height', '13');
+  svg.style.pointerEvents = 'none';
+
+  // Back square
+  const back = document.createElementNS(ns, 'rect');
+  back.setAttribute('x', '3.5'); back.setAttribute('y', '3.5');
+  back.setAttribute('width', '9'); back.setAttribute('height', '9');
+  back.setAttribute('rx', '2'); back.setAttribute('fill', 'none');
+  back.setAttribute('stroke', 'currentColor'); back.setAttribute('stroke-width', '1.4');
+  svg.appendChild(back);
+
+  // Front square (solid fill to mask the back)
+  const front = document.createElementNS(ns, 'rect');
+  front.setAttribute('x', '1.5'); front.setAttribute('y', '1.5');
+  front.setAttribute('width', '8'); front.setAttribute('height', '8');
+  front.setAttribute('rx', '2'); front.setAttribute('fill', '#2c2c2c');
+  front.setAttribute('stroke', 'currentColor'); front.setAttribute('stroke-width', '1.4');
+  svg.appendChild(front);
+
+  return svg;
+}
+
+// Duplicate icon for the right panel (different bg color)
+function makePropDupIcon() {
+  const ns  = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 14 14');
+  svg.setAttribute('width', '13');
+  svg.setAttribute('height', '13');
+  svg.style.pointerEvents = 'none';
+
+  const back = document.createElementNS(ns, 'rect');
+  back.setAttribute('x', '3.5'); back.setAttribute('y', '3.5');
+  back.setAttribute('width', '9'); back.setAttribute('height', '9');
+  back.setAttribute('rx', '2'); back.setAttribute('fill', 'none');
+  back.setAttribute('stroke', 'currentColor'); back.setAttribute('stroke-width', '1.4');
+  svg.appendChild(back);
+
+  const front = document.createElementNS(ns, 'rect');
+  front.setAttribute('x', '1.5'); front.setAttribute('y', '1.5');
+  front.setAttribute('width', '8'); front.setAttribute('height', '8');
+  front.setAttribute('rx', '2'); front.setAttribute('fill', '#242424');
+  front.setAttribute('stroke', 'currentColor'); front.setAttribute('stroke-width', '1.4');
+  svg.appendChild(front);
+
+  return svg;
+}
+
 // ── Layer list (left sidebar) ─────────────────────────────────────────────────
 export function renderCircleList() {
   const list = document.getElementById('circle-list');
@@ -64,17 +118,33 @@ export function renderCircleList() {
     const item = document.createElement('div');
     item.className = 'layer-item' + (i === selectedMaskIndex ? ' selected' : '');
 
-    const icon = document.createElement('div');
-    icon.className = 'layer-item-icon' + (c.shape === 'circle' ? ' circle-icon' : '');
+    const header = document.createElement('div');
+    header.className = 'layer-item-header';
 
     const name = document.createElement('span');
     name.className = 'layer-item-name';
     name.textContent = `Mask ${i + 1}`;
 
+    const btns = document.createElement('div');
+    btns.className = 'layer-item-btns';
+
+    const dupBtn = document.createElement('button');
+    dupBtn.className = 'layer-item-btn';
+    dupBtn.title = 'Duplicate';
+    dupBtn.appendChild(makeDupIcon());
+    dupBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      push();
+      const copy = JSON.parse(JSON.stringify(circles[i]));
+      copy.x += 20; copy.y += 20;
+      circles.push(copy);
+      saveCircles(); renderCircleList(); generate();
+    });
+
     const delBtn = document.createElement('button');
-    delBtn.className = 'layer-item-del';
-    delBtn.textContent = '×';
+    delBtn.className = 'layer-item-btn layer-item-del-btn';
     delBtn.title = 'Delete';
+    delBtn.textContent = '×';
     delBtn.addEventListener('click', e => {
       e.stopPropagation();
       push();
@@ -88,9 +158,11 @@ export function renderCircleList() {
       saveCircles(); renderCircleList(); generate();
     });
 
-    item.appendChild(icon);
-    item.appendChild(name);
-    item.appendChild(delBtn);
+    btns.appendChild(dupBtn);
+    btns.appendChild(delBtn);
+    header.appendChild(name);
+    header.appendChild(btns);
+    item.appendChild(header);
     item.addEventListener('click', () => selectMask(i));
 
     list.appendChild(item);
@@ -335,7 +407,7 @@ export function renderPropertiesPanel(i) {
   const dupBtn = document.createElement('button');
   dupBtn.className = 'prop-icon-btn';
   dupBtn.title = 'Duplicate';
-  dupBtn.textContent = 'D';
+  dupBtn.appendChild(makePropDupIcon());
   dupBtn.addEventListener('click', () => {
     push();
     const copy = JSON.parse(JSON.stringify(circles[i]));
