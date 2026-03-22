@@ -315,6 +315,28 @@ button:hover { opacity: .85; }
 .xy-row input[type="number"]:focus,
 .full-label input[type="number"]:focus { outline: 1px solid #4f8ef7; }
 
+/* ── Mode toggle ── */
+#mode-toggle { display: flex; gap: 6px; }
+
+.mode-btn {
+  flex: 1;
+  padding: 7px 0;
+  border: 1px solid #444;
+  border-radius: 5px;
+  background: #2a2a2a;
+  color: #666;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .15s;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.mode-btn.active { background: #4f8ef7; color: #fff; border-color: #4f8ef7; }
+.mode-btn:hover:not(.active) { border-color: #666; color: #aaa; }
+
+.controls-disabled { opacity: 0.3; pointer-events: none; }
+
 /* ── Element shape toggle ── */
 #shape-row { display: flex; flex-direction: column; gap: 6px; }
 #shape-toggle { display: flex; gap: 6px; }
@@ -458,11 +480,15 @@ button:hover { opacity: .85; }
 /* ── Canvas ── */
 #canvas-wrap {
   flex: 1;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: auto;
+  overflow: hidden;
   padding: 20px;
 }
 
 #artboard { display: block; }
+
+/* ── Mask drag ── */
+[data-reference] { cursor: grab; }

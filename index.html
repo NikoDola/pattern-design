@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pattern Designer</title>
+  <title>Pattern Designer — Checkerboard</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,6 +11,11 @@
   <div id="sidebar">
     <h2>Pattern Designer</h2>
     <p class="subtitle">1000×1000 · 5 000 rects · checkerboard</p>
+
+    <div id="mode-toggle">
+      <button class="mode-btn active" data-mode="mask">Mask</button>
+      <button class="mode-btn" data-mode="reverse">Reverse</button>
+    </div>
 
     <div id="controls">
       <!-- sliders injected by JS -->
@@ -54,7 +59,9 @@
   </div>
 
   <div id="canvas-wrap">
-    <svg id="artboard" width="1000" height="1000"></svg>
+    <div id="artboard-mover">
+      <svg id="artboard" width="1000" height="1000"></svg>
+    </div>
   </div>
 
   <div id="right-panel">
@@ -81,6 +88,6 @@
     </div>
   </div>
 
-  <script src="./script.js"></script>
+  <script type="module" src="./pattern.js"></script>
 </body>
 </html>
