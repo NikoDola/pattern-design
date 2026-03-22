@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pattern Designer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="sidebar">
+    <h2>Pattern Designer</h2>
+    <p class="subtitle">1000×1000 · 5 000 rects · checkerboard</p>
+
+    <div id="controls">
+      <!-- sliders injected by JS -->
+    </div>
+
+    <div id="controls-divider">
+      <span id="btn-equalise">=</span>
+      <span id="btn-dice">⚂</span>
+    </div>
+
+    <div id="total-bar">
+      <span>Total: <strong id="total-display">0%</strong></span>
+      <div id="total-track"><div id="total-fill"></div></div>
+    </div>
+
+    <div id="actions">
+      <button id="btn-generate">Generate</button>
+      <button id="btn-reset">Reset</button>
+    </div>
+
+    <div id="circle-section">
+      <div id="circle-header">
+        <p class="section-label">Object Masks</p>
+        <button id="btn-add-circle">+ Add</button>
+      </div>
+      <div id="circle-list"></div>
+    </div>
+
+    <div id="color-row">
+      <label>Element color <input type="color" id="rect-color" value="#000000"></label>
+      <label>BG color <input type="color" id="bg-color" value="#ffffff"></label>
+    </div>
+
+    <div id="shape-row">
+      <p class="section-label">Element shape</p>
+      <div id="shape-toggle">
+        <button class="shape-btn active" data-shape="square">■ Square</button>
+        <button class="shape-btn" data-shape="circle">● Circle</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="canvas-wrap">
+    <svg id="artboard" width="1000" height="1000"></svg>
+  </div>
+
+  <div id="right-panel">
+    <div id="import-group">
+      <input type="file" id="file-import" accept=".json" style="display:none">
+      <button id="btn-import" class="export-btn import-btn">Upload JSON</button>
+    </div>
+
+    <div id="export-group">
+      <p class="section-label">Export</p>
+      <button id="btn-download-svg" class="export-btn">SVG</button>
+      <button id="btn-download-png" class="export-btn">PNG</button>
+      <button id="btn-download-jpg" class="export-btn">JPG</button>
+    </div>
+  </div>
+
+  <div id="confirm-overlay">
+    <div id="confirm-box">
+      <p id="confirm-msg">Are you sure you want to delete this mask?</p>
+      <div id="confirm-btns">
+        <button id="confirm-yes">Delete</button>
+        <button id="confirm-no">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./script.js"></script>
+</body>
+</html>
