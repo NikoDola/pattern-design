@@ -7,7 +7,7 @@ import { initExport }  from './components/export.js';
 import { initPan, setPanSelectedIndex } from './components/pan.js';
 import { SIZES, pct, savePct, circles, saveCircles } from './components/state.js';
 import { init as historyInit, undo, redo, push } from './components/history.js';
-import { selectedMaskIndex, setSelectedMaskIndex, selectMask } from './components/masks.js';
+import { selectedMaskIndex, setSelectedMaskIndex, selectMask, renderPropertiesPanel } from './components/masks.js';
 
 // ── Init all components ───────────────────────────────────────────────────────
 initSliders();
@@ -24,6 +24,10 @@ function syncUI() {
   });
   updateTotal();
   renderCircleList();
+  // After undo/redo, clamp selectedMaskIndex and refresh the properties panel
+  const clampedIdx = selectedMaskIndex >= 0 && selectedMaskIndex < circles.length ? selectedMaskIndex : -1;
+  if (clampedIdx !== selectedMaskIndex) setSelectedMaskIndex(clampedIdx);
+  renderPropertiesPanel(clampedIdx);
   generate();
 }
 

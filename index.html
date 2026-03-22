@@ -38,7 +38,7 @@
 
     <div id="circle-section">
       <div id="circle-header">
-        <p class="section-label">Object Masks</p>
+        <p class="section-label">Layers</p>
         <button id="btn-add-circle">+ Add</button>
       </div>
       <div id="circle-list"></div>
@@ -59,23 +59,24 @@
   </div>
 
   <div id="canvas-wrap">
-    <div id="align-bar"></div>
     <div id="artboard-mover">
       <svg id="artboard" width="1000" height="1000"></svg>
+    </div>
+    <div id="export-bar">
+      <span class="export-bar-label">Export / Import</span>
+      <div class="export-bar-btns">
+        <button id="btn-download-svg" class="export-btn">SVG</button>
+        <button id="btn-download-png" class="export-btn export-btn-ghost">PNG</button>
+        <button id="btn-download-jpg" class="export-btn">JPG</button>
+      </div>
+      <input type="file" id="file-import" accept=".json" style="display:none">
+      <button id="btn-import" class="export-btn export-btn-import">Upload JSON</button>
     </div>
   </div>
 
   <div id="right-panel">
-    <div id="import-group">
-      <input type="file" id="file-import" accept=".json" style="display:none">
-      <button id="btn-import" class="export-btn import-btn">Upload JSON</button>
-    </div>
-
-    <div id="export-group">
-      <p class="section-label">Export</p>
-      <button id="btn-download-svg" class="export-btn">SVG</button>
-      <button id="btn-download-png" class="export-btn">PNG</button>
-      <button id="btn-download-jpg" class="export-btn">JPG</button>
+    <div id="properties-panel">
+      <!-- injected by JS -->
     </div>
   </div>
 

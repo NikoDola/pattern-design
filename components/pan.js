@@ -1,6 +1,6 @@
 import { circles, saveCircles } from './state.js';
 import { generate }             from './generate.js';
-import { renderCircleList, selectMask, deselectMask } from './masks.js';
+import { renderCircleList, selectMask, deselectMask, syncPropertiesPanelFields } from './masks.js';
 
 const SVG_NS    = 'http://www.w3.org/2000/svg';
 const HANDLE_SZ = 9;
@@ -260,6 +260,7 @@ export function initPan() {
       saveCircles();
       generate();        // dispatches pattern:generated → drawGizmo
       renderCircleList();
+      syncPropertiesPanelFields();
     }
 
     dragging = null;
