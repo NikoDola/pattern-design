@@ -60,6 +60,17 @@ export function setSizes(newVals) {
   Object.keys(pct).forEach(k => { if (!SIZES.includes(+k)) delete pct[k]; });
   SIZES.forEach(s => { if (pct[s] == null) pct[s] = 0; });
   savePct();
+  // Sync all mask zone dists to new SIZES
+  circles.forEach(c => {
+    c.zones.forEach(z => {
+      const validSizes = (z.sizes || SIZES).filter(s => SIZES.includes(s));
+      z.sizes = validSizes.length ? validSizes : [...SIZES];
+      const newDist = {};
+      z.sizes.forEach(s => { newDist[String(s)] = z.dist?.[String(s)] ?? 0; });
+      z.dist = newDist;
+    });
+  });
+  saveCircles();
 }
 
 // ── Mask zone helpers ─────────────────────────────────────────────────────────
@@ -114,7 +125,7 @@ export const circles = (() => {
       return saved;
     }
   } catch (_) {}
-  return [{ x: 300, y: 300, size: 300, shape: 'circle', zones: defaultZones() }];
+  return [];
 })();
 
 export function saveCircles() {

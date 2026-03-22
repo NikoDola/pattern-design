@@ -3,11 +3,11 @@ import { generate, updateSubtitle, updatePatternColors } from './generate.js';
 import { push } from './history.js';
 import { showMaxTooltip } from './utils.js';
 
-export const sliderEls    = {};
-export const numEls       = {};
+export const sliderEls     = {};
+export const numEls        = {};
 export const sizeSelectEls = {};
 
-// Track which cards are expanded (by size value)
+// Track which cards are expanded
 const expandedSizes = new Set();
 
 // ── Shape option helpers ──────────────────────────────────────────────────────
@@ -45,71 +45,11 @@ export function updateTotal() {
   totalFill.className      = sum > 100 ? 'over' : sum === 100 ? 'exact' : '';
 }
 
-// ── Per-size color pickers ────────────────────────────────────────────────────
-function buildColorPickers(wrap, size) {
+// ── Per-size color picker (single, always shown) ──────────────────────────────
+function buildColorPicker(wrap, size) {
   wrap.innerHTML = '';
-  const shapeId = sizeShapes[String(size)]?.shapeId || elementShape;
-  const shape   = customShapes.find(s => s.id === shapeId);
 
-  // Custom shape with detected CSS-var colors
-  if (shape && shape.colors && shape.colors.length > 0) {
-    const overrides = sizeShapes[String(size)]?.colorOverrides || {};
-
-    shape.colors.forEach((orig, i) => {
-      const row = document.createElement('div');
-      row.className = 'size-color-row';
-
-      const lbl = document.createElement('span');
-      lbl.className   = 'size-color-lbl';
-      lbl.textContent = `C${i + 1}`;
-
-      const picker = document.createElement('input');
-      picker.type      = 'color';
-      picker.className = 'size-color-pick';
-      picker.value     = overrides[orig] || shape.colorMap?.[orig] || orig;
-
-      const hex = document.createElement('span');
-      hex.className   = 'size-color-hex';
-      hex.textContent = picker.value;
-
-      const reset = document.createElement('button');
-      reset.className   = 'size-color-reset' + (overrides[orig] ? ' overridden' : '');
-      reset.textContent = 'Reset';
-      reset.title       = 'Reset to global shape color';
-
-      picker.addEventListener('input', () => {
-        hex.textContent = picker.value;
-        if (!sizeShapes[String(size)]) sizeShapes[String(size)] = {};
-        if (!sizeShapes[String(size)].colorOverrides) sizeShapes[String(size)].colorOverrides = {};
-        sizeShapes[String(size)].colorOverrides[orig] = picker.value;
-        reset.classList.add('overridden');
-        saveSizeShapes();
-        updatePatternColors();
-      });
-      picker.addEventListener('change', () => push());
-
-      reset.addEventListener('click', () => {
-        if (!sizeShapes[String(size)]?.colorOverrides) return;
-        delete sizeShapes[String(size)].colorOverrides[orig];
-        saveSizeShapes();
-        picker.value    = shape.colorMap?.[orig] || orig;
-        hex.textContent = picker.value;
-        reset.classList.remove('overridden');
-        updatePatternColors();
-      });
-
-      row.appendChild(lbl);
-      row.appendChild(picker);
-      row.appendChild(hex);
-      row.appendChild(reset);
-      wrap.appendChild(row);
-    });
-    return;
-  }
-
-  // Built-in shape (square/circle) or custom shape with no detected fills:
-  // show a single element-color override picker
-  const assign = sizeShapes[String(size)] || {};
+  const assign      = sizeShapes[String(size)] || {};
   const isOverridden = !!assign.color;
 
   const row = document.createElement('div');
@@ -122,7 +62,7 @@ function buildColorPickers(wrap, size) {
   const picker = document.createElement('input');
   picker.type      = 'color';
   picker.className = 'size-color-pick';
-  picker.value     = assign.color || document.getElementById('rect-color').value || '#000000';
+  picker.value     = assign.color || document.getElementById('rect-color')?.value || '#000000';
 
   const hex = document.createElement('span');
   hex.className   = 'size-color-hex';
@@ -146,8 +86,7 @@ function buildColorPickers(wrap, size) {
   reset.addEventListener('click', () => {
     if (sizeShapes[String(size)]) delete sizeShapes[String(size)].color;
     saveSizeShapes();
-    const rectColor = document.getElementById('rect-color').value;
-    picker.value    = rectColor;
+    picker.value    = document.getElementById('rect-color').value;
     hex.textContent = picker.value;
     reset.classList.remove('overridden');
     updatePatternColors();
@@ -160,11 +99,11 @@ function buildColorPickers(wrap, size) {
   wrap.appendChild(row);
 }
 
-// ── Slider rows builder ───────────────────────────────────────────────────────
+// ── Slider / card builder ─────────────────────────────────────────────────────
 export function initSliders() {
   const controlsEl = document.getElementById('controls');
 
-  // ── Slot size input ─────────────────────────────────────────────────────────
+  // Slot size input
   const slotRow = document.createElement('div');
   slotRow.className = 'sizes-config-row';
 
@@ -194,7 +133,7 @@ export function initSliders() {
   slotRow.appendChild(slotIn);
   controlsEl.appendChild(slotRow);
 
-  // ── Sizes config input ──────────────────────────────────────────────────────
+  // Sizes config input
   const configRow = document.createElement('div');
   configRow.className = 'sizes-config-row';
 
@@ -206,7 +145,7 @@ export function initSliders() {
   configIn.type        = 'text';
   configIn.className   = 'sizes-config-input';
   configIn.value       = SIZES.join(', ');
-  configIn.title       = 'Comma-separated values, e.g. 1, 2, 3, 4, 5 or 2, 4, 6, 8';
+  configIn.title       = 'Comma-separated values, e.g. 1, 2, 3, 4, 5';
   configIn.placeholder = '0, 2, 4, 6, 8, 10';
 
   configIn.addEventListener('change', () => {
@@ -227,7 +166,7 @@ export function initSliders() {
   configRow.appendChild(configIn);
   controlsEl.appendChild(configRow);
 
-  // ── Cards container ─────────────────────────────────────────────────────────
+  // Cards container
   const rowsContainer = document.createElement('div');
   rowsContainer.id = 'slider-rows';
   controlsEl.appendChild(rowsContainer);
@@ -242,7 +181,7 @@ export function initSliders() {
       const card = document.createElement('div');
       card.className = 'size-card';
 
-      // ── Card header (always visible) ─────────────────────────────────────────
+      // Header (always visible)
       const header = document.createElement('div');
       header.className = 'size-card-header';
 
@@ -251,17 +190,15 @@ export function initSliders() {
       label.textContent = size + 'px';
 
       const slider = document.createElement('input');
-      slider.type         = 'range';
-      slider.min          = 0; slider.max = 100; slider.step = 1;
-      slider.value        = pct[size] ?? 0;
-      slider.dataset.size = String(size);
+      slider.type  = 'range';
+      slider.min   = 0; slider.max = 100; slider.step = 1;
+      slider.value = pct[size] ?? 0;
 
       const numInput = document.createElement('input');
-      numInput.type         = 'number';
-      numInput.className    = 'pct-input';
-      numInput.min          = 0; numInput.max = 100; numInput.step = 1;
-      numInput.value        = pct[size] ?? 0;
-      numInput.dataset.size = String(size);
+      numInput.type      = 'number';
+      numInput.className = 'pct-input';
+      numInput.min       = 0; numInput.max = 100; numInput.step = 1;
+      numInput.value     = pct[size] ?? 0;
 
       slider.addEventListener('input', () => {
         const sumOthers = SIZES.reduce((a, s) => s !== size ? a + (pct[s] || 0) : a, 0);
@@ -289,35 +226,31 @@ export function initSliders() {
       header.appendChild(label);
       header.appendChild(slider);
       header.appendChild(numInput);
+      card.appendChild(header);
 
-      // Expand toggle (only for size > 0)
+      // Expand body (only for size > 0)
       if (size !== 0) {
         const expandBtn = document.createElement('button');
         expandBtn.className   = 'size-expand-btn';
         expandBtn.textContent = expandedSizes.has(size) ? '▴' : '▾';
-        expandBtn.title       = 'Show shape & color options';
         header.appendChild(expandBtn);
 
-        // ── Card body (collapsible) ───────────────────────────────────────────
         const body = document.createElement('div');
         body.className = 'size-card-body' + (expandedSizes.has(size) ? ' expanded' : '');
 
         // Shape select
         const shapeRow = document.createElement('div');
         shapeRow.className = 'size-card-shape-row';
-
         const shapeSelect = document.createElement('select');
         shapeSelect.className = 'size-shape-select';
-        const savedId = sizeShapes[String(size)]?.shapeId || 'square';
-        rebuildSizeShapeOptions(shapeSelect, savedId);
-
+        rebuildSizeShapeOptions(shapeSelect, sizeShapes[String(size)]?.shapeId || 'square');
         shapeRow.appendChild(shapeSelect);
         body.appendChild(shapeRow);
 
-        // Color pickers wrap
+        // Color picker
         const colorsWrap = document.createElement('div');
         colorsWrap.className = 'size-card-colors';
-        buildColorPickers(colorsWrap, size);
+        buildColorPicker(colorsWrap, size);
         body.appendChild(colorsWrap);
 
         sizeSelectEls[size] = shapeSelect;
@@ -325,10 +258,7 @@ export function initSliders() {
         shapeSelect.addEventListener('change', () => {
           if (!sizeShapes[String(size)]) sizeShapes[String(size)] = {};
           sizeShapes[String(size)].shapeId = shapeSelect.value;
-          // Clear per-size overrides when shape changes
-          sizeShapes[String(size)].colorOverrides = {};
           saveSizeShapes();
-          buildColorPickers(colorsWrap, size);
           generate();
         });
 
@@ -339,10 +269,7 @@ export function initSliders() {
           if (open) expandedSizes.add(size); else expandedSizes.delete(size);
         });
 
-        card.appendChild(header);
         card.appendChild(body);
-      } else {
-        card.appendChild(header);
       }
 
       rowsContainer.appendChild(card);

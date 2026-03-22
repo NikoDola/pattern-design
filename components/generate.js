@@ -42,15 +42,20 @@ export function getCircleInfo(px, py) {
       ldx = tx; ldy = ty;
     }
 
+    // Check if point is inside the mask boundary
+    const ndCheck = c.shape === 'square'
+      ? Math.max(Math.abs(ldx) / rx, Math.abs(ldy) / ry)
+      : Math.sqrt((ldx / rx) ** 2 + (ldy / ry) ** 2);
+    if (ndCheck > 1) return;
+
     let depth;
-    if (c.shape === 'square') {
-      const nd = Math.max(Math.abs(ldx) / rx, Math.abs(ldy) / ry);
-      if (nd > 1) return;
-      depth = nd * 100;
+    if (c.gradient === 'linear') {
+      // Left edge = 0%, right edge = 100%  (after rotation is already applied to ldx)
+      depth = (ldx / rx + 1) / 2 * 100;
+    } else if (c.shape === 'square') {
+      depth = Math.max(Math.abs(ldx) / rx, Math.abs(ldy) / ry) * 100;
     } else {
-      const nd = Math.sqrt((ldx / rx) ** 2 + (ldy / ry) ** 2);
-      if (nd > 1) return;
-      depth = nd * 100;
+      depth = Math.sqrt((ldx / rx) ** 2 + (ldy / ry) ** 2) * 100;
     }
     if (depth > maxDepth) { maxDepth = depth; best = c; }
   });
@@ -78,9 +83,8 @@ export function updateSubtitle() {
   if (el) el.textContent = `1000×1000 · ${TOTAL.toLocaleString()} slots · ${SLOT}px grid`;
 }
 
-// ── CSS-based color update (no re-render) ─────────────────────────────────────
-// Builds a <style> block inside the artboard that drives all element colors.
-// Call this instead of generate() when only colors change.
+// ── In-place color update — no re-render ─────────────────────────────────────
+// Walks existing artboard elements and sets fill without touching structure.
 export function updatePatternColors() {
   const artboard  = document.getElementById('artboard');
   if (!artboard) return;
@@ -89,54 +93,17 @@ export function updatePatternColors() {
   const bgColor   = document.getElementById('bg-color')?.value   || '#ffffff';
   saveColors(rectColor, bgColor);
 
-  let styleEl = artboard.querySelector('style[data-co]');
-  if (!styleEl) {
-    styleEl = document.createElementNS(NS, 'style');
-    styleEl.setAttribute('data-co', '1');
-    artboard.insertBefore(styleEl, artboard.firstChild);
-  }
+  artboard.querySelectorAll('[data-size]').forEach(el => {
+    const size    = el.dataset.size;
+    const shapeId = el.dataset.shapeId;
+    const shape   = shapeId ? customShapes.find(s => s.id === shapeId) : null;
 
-  let css = '';
+    // multiColor custom shapes keep their original embedded colors
+    if (shape?.multiColor) return;
 
-  // Default fill for all pattern rects and circles (not the mask reference outlines)
-  css += `#artboard rect:not([data-reference]),#artboard circle{fill:${rectColor}}\n`;
-
-  // Global CSS vars for each custom shape
-  customShapes.forEach(shape => {
-    if (!shape.colors?.length) return;
-    const vars = shape.colors.map((c, i) => `--c${i}:${shape.colorMap?.[c] || c}`).join(';');
-    css += `#artboard .cs-${shape.id}{${vars}}\n`;
+    const color = sizeShapes[size]?.color || rectColor;
+    el.setAttribute('fill', color);
   });
-
-  // Per-size element-color override (for rect / circle / no-fill use)
-  // and per-size CSS-var overrides for custom shapes
-  SIZES.forEach(size => {
-    if (size === 0) return;
-    const assign  = sizeShapes[String(size)] || {};
-    const shapeId = assign.shapeId || elementShape;
-    const shape   = customShapes.find(s => s.id === shapeId);
-
-    // Element color override
-    const elColor = assign.color;
-    if (elColor) {
-      if (!shape || !shape.colors?.length) {
-        // Built-in or no-fill custom shape: override fill
-        css += `#artboard rect.sz${size},#artboard circle.sz${size},#artboard use.nf.sz${size}{fill:${elColor}}\n`;
-      }
-    }
-
-    // Per-size CSS-var overrides for custom shapes
-    if (shape?.colors?.length && assign.colorOverrides) {
-      const parts = shape.colors
-        .map((orig, i) => assign.colorOverrides[orig] ? `--c${i}:${assign.colorOverrides[orig]}` : '')
-        .filter(Boolean);
-      if (parts.length) {
-        css += `#artboard .cs-${shapeId}.sz${size}{${parts.join(';')}}\n`;
-      }
-    }
-  });
-
-  styleEl.textContent = css;
 }
 
 // ── Full pattern render ───────────────────────────────────────────────────────
@@ -206,14 +173,14 @@ export function generate() {
         el.setAttribute('cx', slotX + SLOT / 2);
         el.setAttribute('cy', slotY + SLOT / 2);
         el.setAttribute('r',  size / 2);
-        el.setAttribute('class', `sz${size}`);
+        el.dataset.size = String(size);
       } else if (shapeId === 'square') {
         el = document.createElementNS(NS, 'rect');
         el.setAttribute('x',      slotX + offset);
         el.setAttribute('y',      slotY + offset);
         el.setAttribute('width',  size);
         el.setAttribute('height', size);
-        el.setAttribute('class', `sz${size}`);
+        el.dataset.size = String(size);
       } else {
         const shape = customShapes.find(s => s.id === shapeId);
         if (shape) {
@@ -223,25 +190,23 @@ export function generate() {
           el.setAttribute('y',      slotY + offset);
           el.setAttribute('width',  size);
           el.setAttribute('height', size);
-          // Class: cs-{id} for CSS-var targeting, sz{size} for per-size override,
-          // nf (no-fill) if this shape has no detected colors (uses element fill)
-          const cls = `cs-${shapeId} sz${size}` + (shape.colors?.length ? '' : ' nf');
-          el.setAttribute('class', cls);
+          el.dataset.size    = String(size);
+          el.dataset.shapeId = shapeId;
         } else {
-          // Deleted shape fallback → rect
+          // Deleted shape — fall back to rect
           el = document.createElementNS(NS, 'rect');
           el.setAttribute('x',      slotX + offset);
           el.setAttribute('y',      slotY + offset);
           el.setAttribute('width',  size);
           el.setAttribute('height', size);
-          el.setAttribute('class', `sz${size}`);
+          el.dataset.size = String(size);
         }
       }
       if (el) artboard.appendChild(el);
     }
   }
 
-  // Reference mask outlines — explicit fill/stroke inline (not driven by CSS)
+  // Reference mask outlines — explicit inline fill/stroke, not touched by updatePatternColors
   for (let i = circles.length - 1; i >= 0; i--) {
     const c = circles[i];
     const w   = c.width  ?? c.size;
@@ -274,7 +239,6 @@ export function generate() {
     artboard.appendChild(el);
   }
 
-  // Apply colors via CSS style block (no inline fill/style on pattern elements)
   updatePatternColors();
 
   artboard.dispatchEvent(new CustomEvent('pattern:generated'));

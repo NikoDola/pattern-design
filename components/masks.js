@@ -572,6 +572,79 @@ export function renderPropertiesPanel(i) {
   shapeSection.appendChild(shapeRow);
   panel.appendChild(shapeSection);
 
+  // ── Gradient ───────────────────────────────────────────────────────────────
+  const gradSection = document.createElement('div');
+  gradSection.className = 'prop-section';
+
+  const gradLabel = document.createElement('p');
+  gradLabel.className   = 'section-label';
+  gradLabel.textContent = 'Gradient';
+
+  const gradRow = document.createElement('div');
+  gradRow.className = 'mask-shape-row';
+
+  const currentGrad = c.gradient || 'radial';
+  [{ value: 'radial', label: '◉ Radial' }, { value: 'linear', label: '↔ Linear' }].forEach(({ value, label }) => {
+    const btn = document.createElement('button');
+    btn.className   = 'mask-shape-btn' + (currentGrad === value ? ' active' : '');
+    btn.textContent = label;
+    btn.addEventListener('click', () => {
+      push();
+      circles[i].gradient = value;
+      saveCircles(); renderPropertiesPanel(i); generate();
+    });
+    gradRow.appendChild(btn);
+  });
+
+  gradSection.appendChild(gradLabel);
+  gradSection.appendChild(gradRow);
+
+  // Auto-align button — rebuilds zones large→small for smooth halftone fade
+  const autoRow = document.createElement('div');
+  autoRow.className = 'mask-shape-row';
+
+  const autoBtn = document.createElement('button');
+  autoBtn.className   = 'mask-shape-btn auto-align-btn';
+  autoBtn.textContent = '✦ Auto-align zones';
+  autoBtn.title       = 'Rebuild zones: large sizes at start → small sizes at end (smooth halftone fade)';
+  autoBtn.addEventListener('click', () => {
+    push();
+    // Sort all sizes largest → smallest
+    const sorted = [...SIZES].sort((a, b) => b - a);
+    if (sorted.length < 2) return;
+
+    // Build adjacent pairs: (10,8), (8,6), (6,4), (4,2), (2,0)
+    const pairs = [];
+    for (let k = 0; k < sorted.length - 1; k++) pairs.push([sorted[k], sorted[k + 1]]);
+
+    // Each pair gets 2 sub-zones: first half large-dominant, second half small-dominant
+    // This creates a smooth non-strict blend — "not so strict, some small at start"
+    const totalZones = pairs.length * 2;
+    const step = 100 / totalZones;
+    const zones = [];
+
+    pairs.forEach(([large, small], pairIdx) => {
+      const makeDist = (primary, secondary) => {
+        const d = {};
+        SIZES.forEach(s => { d[String(s)] = 0; });
+        d[String(primary)]   = 75;
+        d[String(secondary)] = 25;
+        return d;
+      };
+      const maxA = Math.round((pairIdx * 2 + 1) * step);
+      const maxB = pairIdx * 2 + 2 === totalZones ? 100 : Math.round((pairIdx * 2 + 2) * step);
+      zones.push({ max: maxA, sizes: [...SIZES], dist: makeDist(large, small) });
+      zones.push({ max: maxB, sizes: [...SIZES], dist: makeDist(small, large) });
+    });
+
+    circles[i].zones = zones;
+    saveCircles(); renderPropertiesPanel(i); generate();
+  });
+  autoRow.appendChild(autoBtn);
+  gradSection.appendChild(autoRow);
+
+  panel.appendChild(gradSection);
+
   // ── Zones ──────────────────────────────────────────────────────────────────
   const zonesSection = document.createElement('div');
   zonesSection.className = 'prop-section prop-section-zones';

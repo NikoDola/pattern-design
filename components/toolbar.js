@@ -2,7 +2,6 @@ import { SIZES, pct, savePct, elementShape, setElementShape, maskMode, setMaskMo
 import { generate, updatePatternColors } from './generate.js';
 import { sliderEls, numEls, updateTotal, refreshSizeShapeOptions, sizeSelectEls } from './sliders.js';
 import { push } from './history.js';
-import { extractAndReplaceColors } from './utils.js';
 
 function setControlsDisabled(disabled) {
   document.getElementById('controls').classList.toggle('controls-disabled', disabled);
@@ -24,33 +23,45 @@ function processUploadedSVG(content, filename) {
     viewBox = `0 0 ${w} ${h}`;
   }
 
+  const SKIP = ['none', 'transparent', 'currentcolor', 'inherit'];
+
+  // Collect explicit attribute fills
+  const fills = new Set();
+  doc.querySelectorAll('*').forEach(el => {
+    const f = el.getAttribute('fill');
+    if (f && !SKIP.includes(f.toLowerCase())) fills.add(f.toLowerCase());
+    const sf = el.style?.fill;
+    if (sf && sf !== '' && !SKIP.includes(sf.toLowerCase())) fills.add(sf.toLowerCase());
+  });
+
+  // If SVG uses embedded <style> CSS for fills (e.g. Adobe Illustrator exports),
+  // treat as multiColor so we preserve original appearance without trying to override.
+  let hasCssFills = false;
+  doc.querySelectorAll('style').forEach(s => {
+    if (/\bfill\s*:/i.test(s.textContent || '')) hasCssFills = true;
+  });
+
+  const multiColor = fills.size > 1 || hasCssFills;
   const svgContent = svgEl.innerHTML;
-  const { colors, symbolContent } = extractAndReplaceColors(svgContent);
-  const colorMap = Object.fromEntries(colors.map(c => [c, c]));
+
+  let symbolContent = svgContent;
+  if (!multiColor) {
+    // Strip explicit fills so <use fill="color"> cascades as inherited fill
+    doc.querySelectorAll('[fill]').forEach(el => {
+      const f = el.getAttribute('fill');
+      if (f && f !== 'none') el.removeAttribute('fill');
+    });
+    doc.querySelectorAll('*').forEach(el => {
+      if (el.style?.fill && el.style.fill !== 'none') el.style.fill = '';
+    });
+    symbolContent = svgEl.innerHTML;
+  }
 
   return {
     id: 'sh_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
     name: filename.replace(/\.svg$/i, '').slice(0, 24),
-    svgContent, symbolContent, viewBox,
-    multiColor: colors.length > 1,
-    colors, colorMap,
+    svgContent, symbolContent, viewBox, multiColor,
   };
-}
-
-// ── Migrate old shapes (no colors/colorMap) ───────────────────────────────────
-function migrateOldShapes() {
-  let changed = false;
-  customShapes.forEach(shape => {
-    if (!shape.colors) {
-      const { colors, symbolContent } = extractAndReplaceColors(shape.svgContent);
-      shape.colors      = colors;
-      shape.colorMap    = Object.fromEntries(colors.map(c => [c, c]));
-      shape.symbolContent = symbolContent;
-      shape.multiColor  = colors.length > 1;
-      changed = true;
-    }
-  });
-  if (changed) saveCustomShapes();
 }
 
 // ── Global shape select refresh ────────────────────────────────────────────────
@@ -73,60 +84,11 @@ export function refreshGlobalShapeSelect() {
   });
 }
 
-// ── Build global color pickers for a shape ─────────────────────────────────────
-function buildGlobalColorPickers(wrap, shape) {
-  wrap.innerHTML = '';
-
-  if (!shape.colors || shape.colors.length === 0) {
-    const note = document.createElement('p');
-    note.style.cssText = 'font-size:10px;color:#555;line-height:1.4;';
-    note.textContent = 'No fill colors detected. Use the element color picker or per-size color in each size card.';
-    wrap.appendChild(note);
-    return;
-  }
-
-  shape.colors.forEach((orig, i) => {
-    const row = document.createElement('div');
-    row.className = 'shape-color-row';
-
-    const lbl = document.createElement('span');
-    lbl.className   = 'size-color-lbl';
-    lbl.textContent = `C${i + 1}`;
-
-    const picker = document.createElement('input');
-    picker.type      = 'color';
-    picker.className = 'size-color-pick';
-    picker.value     = shape.colorMap?.[orig] || orig;
-
-    const hex = document.createElement('span');
-    hex.className   = 'size-color-hex';
-    hex.textContent = picker.value;
-
-    picker.addEventListener('input', () => {
-      hex.textContent = picker.value;
-      if (!shape.colorMap) shape.colorMap = {};
-      shape.colorMap[orig] = picker.value;
-      saveCustomShapes();
-      updatePatternColors();
-    });
-    picker.addEventListener('change', () => push());
-
-    row.appendChild(lbl);
-    row.appendChild(picker);
-    row.appendChild(hex);
-    wrap.appendChild(row);
-  });
-}
-
 // ── Shape section builder ──────────────────────────────────────────────────────
 function initShapeSection() {
-  // Migrate any old shapes that don't have the CSS var system yet
-  migrateOldShapes();
-
   const shapeRow = document.getElementById('shape-row');
   shapeRow.innerHTML = '';
 
-  // Section label
   const label = document.createElement('p');
   label.className   = 'section-label';
   label.textContent = 'Element shape';
@@ -157,7 +119,7 @@ function initShapeSection() {
 
   shapeRow.appendChild(globalSelect);
 
-  // Custom shapes upload section
+  // Custom shapes section
   const uploadSection = document.createElement('div');
   uploadSection.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:4px;';
 
@@ -205,7 +167,6 @@ function initShapeSection() {
     reader.readAsText(file);
   });
 
-  // Shape list
   const shapeList = document.createElement('div');
   shapeList.className = 'custom-shape-list';
 
@@ -236,10 +197,6 @@ function initShapeSection() {
       const item = document.createElement('div');
       item.className = 'custom-shape-item';
 
-      // ── Item header ─────────────────────────────────────────────────────────
-      const itemHeader = document.createElement('div');
-      itemHeader.className = 'custom-shape-item-header';
-
       const thumb = document.createElement('div');
       thumb.className = 'shape-thumb';
       const thumbSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -258,32 +215,10 @@ function initShapeSection() {
       multiTag.className   = 'shape-multicolor-tag';
       multiTag.textContent = shape.multiColor ? 'multi' : '';
 
-      const expandBtn = document.createElement('button');
-      expandBtn.className   = 'shape-expand-btn';
-      expandBtn.textContent = '▾';
-      expandBtn.title       = 'Edit colors';
-
       const delBtn = document.createElement('button');
       delBtn.className   = 'shape-del-btn';
       delBtn.textContent = '×';
       delBtn.title       = 'Delete shape';
-
-      itemHeader.appendChild(thumb);
-      itemHeader.appendChild(nameEl);
-      itemHeader.appendChild(multiTag);
-      itemHeader.appendChild(expandBtn);
-      itemHeader.appendChild(delBtn);
-
-      // ── Global color pickers (collapsible) ──────────────────────────────────
-      const colorsSection = document.createElement('div');
-      colorsSection.className = 'shape-color-section';
-      buildGlobalColorPickers(colorsSection, shape);
-
-      expandBtn.addEventListener('click', e => {
-        e.stopPropagation();
-        const open = colorsSection.classList.toggle('expanded');
-        expandBtn.textContent = open ? '▴' : '▾';
-      });
 
       delBtn.addEventListener('click', () => {
         const idx = customShapes.findIndex(s => s.id === shape.id);
@@ -291,12 +226,8 @@ function initShapeSection() {
         customShapes.splice(idx, 1);
         saveCustomShapes();
 
-        // Clean up sizeShapes references
         Object.keys(sizeShapes).forEach(k => {
-          if (sizeShapes[k]?.shapeId === shape.id) {
-            delete sizeShapes[k].shapeId;
-            delete sizeShapes[k].colorOverrides;
-          }
+          if (sizeShapes[k]?.shapeId === shape.id) delete sizeShapes[k].shapeId;
         });
         saveSizeShapes();
 
@@ -309,15 +240,16 @@ function initShapeSection() {
         generate();
       });
 
-      item.appendChild(itemHeader);
-      item.appendChild(colorsSection);
+      item.appendChild(thumb);
+      item.appendChild(nameEl);
+      item.appendChild(multiTag);
+      item.appendChild(delBtn);
       listEl.appendChild(item);
     });
   }
 }
 
 export function initToolbar() {
-  // Mode toggle
   const isReverse = maskMode === 'reverse';
   setControlsDisabled(isReverse);
   if (isReverse) {
@@ -337,7 +269,6 @@ export function initToolbar() {
     });
   });
 
-  // Equalise: all sizes 10%
   document.getElementById('btn-equalise').addEventListener('click', () => {
     push();
     SIZES.forEach(size => {
@@ -348,7 +279,6 @@ export function initToolbar() {
     updateTotal(); savePct(); generate();
   });
 
-  // Dice: random distribution summing to 100%
   document.getElementById('btn-dice').addEventListener('click', () => {
     push();
     const weights = SIZES.map(() => Math.random());
@@ -365,6 +295,5 @@ export function initToolbar() {
     updateTotal(); savePct(); generate();
   });
 
-  // Shape section
   initShapeSection();
 }
