@@ -146,3 +146,30 @@ export function loadColors() {
   try { return JSON.parse(localStorage.getItem('pattern-designer-colors')); }
   catch (_) { return null; }
 }
+
+// ── Custom shapes ─────────────────────────────────────────────────────────────
+const LS_CUSTOM_SHAPES = 'pattern-designer-custom-shapes';
+export const customShapes = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_CUSTOM_SHAPES));
+    if (Array.isArray(saved)) return saved;
+  } catch (_) {}
+  return [];
+})();
+export function saveCustomShapes() {
+  localStorage.setItem(LS_CUSTOM_SHAPES, JSON.stringify(customShapes));
+}
+
+// ── Per-size shape assignments ─────────────────────────────────────────────────
+// key = String(size), value = { shapeId: string, color: string }
+const LS_SIZE_SHAPES = 'pattern-designer-size-shapes';
+export const sizeShapes = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_SIZE_SHAPES));
+    if (saved && typeof saved === 'object') return saved;
+  } catch (_) {}
+  return {};
+})();
+export function saveSizeShapes() {
+  localStorage.setItem(LS_SIZE_SHAPES, JSON.stringify(sizeShapes));
+}

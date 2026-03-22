@@ -1,12 +1,40 @@
-import { SIZES, SLOT, pct, savePct, setSizes, setSlot, isValidSlot } from './state.js';
-import { generate, updateSubtitle } from './generate.js';
+import { SIZES, SLOT, pct, savePct, setSizes, setSlot, isValidSlot, sizeShapes, saveSizeShapes, customShapes, elementShape } from './state.js';
+import { generate, updateSubtitle, updatePatternColors } from './generate.js';
 import { push } from './history.js';
 import { showMaxTooltip } from './utils.js';
 
-export const sliderEls = {};
-export const numEls    = {};
+export const sliderEls    = {};
+export const numEls       = {};
+export const sizeSelectEls = {};
 
+// Track which cards are expanded (by size value)
+const expandedSizes = new Set();
 
+// ── Shape option helpers ──────────────────────────────────────────────────────
+function rebuildSizeShapeOptions(select, selectedId) {
+  select.innerHTML = '';
+  [{ value: 'square', label: '■ Square' }, { value: 'circle', label: '● Circle' }].forEach(({ value, label }) => {
+    const opt = document.createElement('option');
+    opt.value = value; opt.textContent = label;
+    if (value === selectedId) opt.selected = true;
+    select.appendChild(opt);
+  });
+  customShapes.forEach(shape => {
+    const opt = document.createElement('option');
+    opt.value = shape.id; opt.textContent = shape.name;
+    if (shape.id === selectedId) opt.selected = true;
+    select.appendChild(opt);
+  });
+}
+
+export function refreshSizeShapeOptions() {
+  Object.entries(sizeSelectEls).forEach(([size, select]) => {
+    const savedId = sizeShapes[String(size)]?.shapeId || 'square';
+    rebuildSizeShapeOptions(select, savedId);
+  });
+}
+
+// ── Total bar ─────────────────────────────────────────────────────────────────
 export function updateTotal() {
   const totalDisplay = document.getElementById('total-display');
   const totalFill    = document.getElementById('total-fill');
@@ -17,6 +45,122 @@ export function updateTotal() {
   totalFill.className      = sum > 100 ? 'over' : sum === 100 ? 'exact' : '';
 }
 
+// ── Per-size color pickers ────────────────────────────────────────────────────
+function buildColorPickers(wrap, size) {
+  wrap.innerHTML = '';
+  const shapeId = sizeShapes[String(size)]?.shapeId || elementShape;
+  const shape   = customShapes.find(s => s.id === shapeId);
+
+  // Custom shape with detected CSS-var colors
+  if (shape && shape.colors && shape.colors.length > 0) {
+    const overrides = sizeShapes[String(size)]?.colorOverrides || {};
+
+    shape.colors.forEach((orig, i) => {
+      const row = document.createElement('div');
+      row.className = 'size-color-row';
+
+      const lbl = document.createElement('span');
+      lbl.className   = 'size-color-lbl';
+      lbl.textContent = `C${i + 1}`;
+
+      const picker = document.createElement('input');
+      picker.type      = 'color';
+      picker.className = 'size-color-pick';
+      picker.value     = overrides[orig] || shape.colorMap?.[orig] || orig;
+
+      const hex = document.createElement('span');
+      hex.className   = 'size-color-hex';
+      hex.textContent = picker.value;
+
+      const reset = document.createElement('button');
+      reset.className   = 'size-color-reset' + (overrides[orig] ? ' overridden' : '');
+      reset.textContent = 'Reset';
+      reset.title       = 'Reset to global shape color';
+
+      picker.addEventListener('input', () => {
+        hex.textContent = picker.value;
+        if (!sizeShapes[String(size)]) sizeShapes[String(size)] = {};
+        if (!sizeShapes[String(size)].colorOverrides) sizeShapes[String(size)].colorOverrides = {};
+        sizeShapes[String(size)].colorOverrides[orig] = picker.value;
+        reset.classList.add('overridden');
+        saveSizeShapes();
+        updatePatternColors();
+      });
+      picker.addEventListener('change', () => push());
+
+      reset.addEventListener('click', () => {
+        if (!sizeShapes[String(size)]?.colorOverrides) return;
+        delete sizeShapes[String(size)].colorOverrides[orig];
+        saveSizeShapes();
+        picker.value    = shape.colorMap?.[orig] || orig;
+        hex.textContent = picker.value;
+        reset.classList.remove('overridden');
+        updatePatternColors();
+      });
+
+      row.appendChild(lbl);
+      row.appendChild(picker);
+      row.appendChild(hex);
+      row.appendChild(reset);
+      wrap.appendChild(row);
+    });
+    return;
+  }
+
+  // Built-in shape (square/circle) or custom shape with no detected fills:
+  // show a single element-color override picker
+  const assign = sizeShapes[String(size)] || {};
+  const isOverridden = !!assign.color;
+
+  const row = document.createElement('div');
+  row.className = 'size-color-row';
+
+  const lbl = document.createElement('span');
+  lbl.className   = 'size-color-lbl';
+  lbl.textContent = 'Color';
+
+  const picker = document.createElement('input');
+  picker.type      = 'color';
+  picker.className = 'size-color-pick';
+  picker.value     = assign.color || document.getElementById('rect-color').value || '#000000';
+
+  const hex = document.createElement('span');
+  hex.className   = 'size-color-hex';
+  hex.textContent = picker.value;
+
+  const reset = document.createElement('button');
+  reset.className   = 'size-color-reset' + (isOverridden ? ' overridden' : '');
+  reset.textContent = 'Reset';
+  reset.title       = 'Reset to global element color';
+
+  picker.addEventListener('input', () => {
+    hex.textContent = picker.value;
+    if (!sizeShapes[String(size)]) sizeShapes[String(size)] = {};
+    sizeShapes[String(size)].color = picker.value;
+    reset.classList.add('overridden');
+    saveSizeShapes();
+    updatePatternColors();
+  });
+  picker.addEventListener('change', () => push());
+
+  reset.addEventListener('click', () => {
+    if (sizeShapes[String(size)]) delete sizeShapes[String(size)].color;
+    saveSizeShapes();
+    const rectColor = document.getElementById('rect-color').value;
+    picker.value    = rectColor;
+    hex.textContent = picker.value;
+    reset.classList.remove('overridden');
+    updatePatternColors();
+  });
+
+  row.appendChild(lbl);
+  row.appendChild(picker);
+  row.appendChild(hex);
+  row.appendChild(reset);
+  wrap.appendChild(row);
+}
+
+// ── Slider rows builder ───────────────────────────────────────────────────────
 export function initSliders() {
   const controlsEl = document.getElementById('controls');
 
@@ -25,23 +169,20 @@ export function initSliders() {
   slotRow.className = 'sizes-config-row';
 
   const slotLbl = document.createElement('label');
-  slotLbl.className = 'sizes-config-label';
+  slotLbl.className   = 'sizes-config-label';
   slotLbl.textContent = 'Slot px';
 
   const slotIn = document.createElement('input');
-  slotIn.type        = 'number';
-  slotIn.className   = 'sizes-config-input slot-input';
-  slotIn.value       = SLOT;
-  slotIn.min         = 2;
-  slotIn.step        = 2;
-  slotIn.title       = 'Even number that divides 1000 (e.g. 2, 4, 8, 10, 20, 40, 50, 100…)';
+  slotIn.type      = 'number';
+  slotIn.className = 'sizes-config-input slot-input';
+  slotIn.value     = SLOT;
+  slotIn.min       = 2;
+  slotIn.step      = 2;
+  slotIn.title     = 'Even number that divides 1000 (e.g. 2, 4, 8, 10, 20, 40, 50, 100…)';
 
   slotIn.addEventListener('change', () => {
     const v = +slotIn.value;
-    if (!isValidSlot(v)) {
-      slotIn.value = SLOT;  // revert
-      return;
-    }
+    if (!isValidSlot(v)) { slotIn.value = SLOT; return; }
     push();
     setSlot(v);
     slotIn.value = SLOT;
@@ -58,14 +199,14 @@ export function initSliders() {
   configRow.className = 'sizes-config-row';
 
   const configLbl = document.createElement('label');
-  configLbl.className = 'sizes-config-label';
+  configLbl.className   = 'sizes-config-label';
   configLbl.textContent = 'Sizes';
 
   const configIn = document.createElement('input');
-  configIn.type = 'text';
-  configIn.className = 'sizes-config-input';
-  configIn.value = SIZES.join(', ');
-  configIn.title = 'Comma-separated values, e.g. 1, 2, 3, 4, 5 or 2, 4, 6, 8';
+  configIn.type        = 'text';
+  configIn.className   = 'sizes-config-input';
+  configIn.value       = SIZES.join(', ');
+  configIn.title       = 'Comma-separated values, e.g. 1, 2, 3, 4, 5 or 2, 4, 6, 8';
   configIn.placeholder = '0, 2, 4, 6, 8, 10';
 
   configIn.addEventListener('change', () => {
@@ -86,7 +227,7 @@ export function initSliders() {
   configRow.appendChild(configIn);
   controlsEl.appendChild(configRow);
 
-  // ── Slider rows container ───────────────────────────────────────────────────
+  // ── Cards container ─────────────────────────────────────────────────────────
   const rowsContainer = document.createElement('div');
   rowsContainer.id = 'slider-rows';
   controlsEl.appendChild(rowsContainer);
@@ -95,27 +236,32 @@ export function initSliders() {
     rowsContainer.innerHTML = '';
     Object.keys(sliderEls).forEach(k => delete sliderEls[k]);
     Object.keys(numEls).forEach(k => delete numEls[k]);
+    Object.keys(sizeSelectEls).forEach(k => delete sizeSelectEls[k]);
 
     SIZES.forEach(size => {
-      const row = document.createElement('div');
-      row.className = 'size-row';
+      const card = document.createElement('div');
+      card.className = 'size-card';
+
+      // ── Card header (always visible) ─────────────────────────────────────────
+      const header = document.createElement('div');
+      header.className = 'size-card-header';
 
       const label = document.createElement('span');
-      label.className = 'size-label';
+      label.className   = 'size-label';
       label.textContent = size + 'px';
 
       const slider = document.createElement('input');
-      slider.type  = 'range';
-      slider.min   = 0; slider.max = 100; slider.step = 1;
-      slider.value = pct[size] ?? 0;
-      slider.dataset.size = size;
+      slider.type         = 'range';
+      slider.min          = 0; slider.max = 100; slider.step = 1;
+      slider.value        = pct[size] ?? 0;
+      slider.dataset.size = String(size);
 
       const numInput = document.createElement('input');
-      numInput.type      = 'number';
-      numInput.className = 'pct-input';
-      numInput.min = 0; numInput.max = 100; numInput.step = 1;
-      numInput.value = pct[size] ?? 0;
-      numInput.dataset.size = size;
+      numInput.type         = 'number';
+      numInput.className    = 'pct-input';
+      numInput.min          = 0; numInput.max = 100; numInput.step = 1;
+      numInput.value        = pct[size] ?? 0;
+      numInput.dataset.size = String(size);
 
       slider.addEventListener('input', () => {
         const sumOthers = SIZES.reduce((a, s) => s !== size ? a + (pct[s] || 0) : a, 0);
@@ -125,7 +271,7 @@ export function initSliders() {
         numInput.value = v; pct[size] = v;
         updateTotal(); savePct(); generate();
       });
-      slider.addEventListener('change', () => { push(); });
+      slider.addEventListener('change', () => push());
 
       numInput.addEventListener('input', () => {
         const sumOthers = SIZES.reduce((a, s) => s !== size ? a + (pct[s] || 0) : a, 0);
@@ -135,15 +281,71 @@ export function initSliders() {
         pct[size] = v; slider.value = v;
         updateTotal(); savePct(); generate();
       });
-      numInput.addEventListener('change', () => { push(); });
+      numInput.addEventListener('change', () => push());
 
       sliderEls[size] = slider;
       numEls[size]    = numInput;
 
-      row.appendChild(label);
-      row.appendChild(slider);
-      row.appendChild(numInput);
-      rowsContainer.appendChild(row);
+      header.appendChild(label);
+      header.appendChild(slider);
+      header.appendChild(numInput);
+
+      // Expand toggle (only for size > 0)
+      if (size !== 0) {
+        const expandBtn = document.createElement('button');
+        expandBtn.className   = 'size-expand-btn';
+        expandBtn.textContent = expandedSizes.has(size) ? '▴' : '▾';
+        expandBtn.title       = 'Show shape & color options';
+        header.appendChild(expandBtn);
+
+        // ── Card body (collapsible) ───────────────────────────────────────────
+        const body = document.createElement('div');
+        body.className = 'size-card-body' + (expandedSizes.has(size) ? ' expanded' : '');
+
+        // Shape select
+        const shapeRow = document.createElement('div');
+        shapeRow.className = 'size-card-shape-row';
+
+        const shapeSelect = document.createElement('select');
+        shapeSelect.className = 'size-shape-select';
+        const savedId = sizeShapes[String(size)]?.shapeId || 'square';
+        rebuildSizeShapeOptions(shapeSelect, savedId);
+
+        shapeRow.appendChild(shapeSelect);
+        body.appendChild(shapeRow);
+
+        // Color pickers wrap
+        const colorsWrap = document.createElement('div');
+        colorsWrap.className = 'size-card-colors';
+        buildColorPickers(colorsWrap, size);
+        body.appendChild(colorsWrap);
+
+        sizeSelectEls[size] = shapeSelect;
+
+        shapeSelect.addEventListener('change', () => {
+          if (!sizeShapes[String(size)]) sizeShapes[String(size)] = {};
+          sizeShapes[String(size)].shapeId = shapeSelect.value;
+          // Clear per-size overrides when shape changes
+          sizeShapes[String(size)].colorOverrides = {};
+          saveSizeShapes();
+          buildColorPickers(colorsWrap, size);
+          generate();
+        });
+
+        expandBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          const open = body.classList.toggle('expanded');
+          expandBtn.textContent = open ? '▴' : '▾';
+          if (open) expandedSizes.add(size); else expandedSizes.delete(size);
+        });
+
+        card.appendChild(header);
+        card.appendChild(body);
+      } else {
+        card.appendChild(header);
+      }
+
+      rowsContainer.appendChild(card);
     });
   }
 

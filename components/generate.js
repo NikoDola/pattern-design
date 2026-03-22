@@ -1,4 +1,4 @@
-import { NS, SLOT, COLS, ROWS, TOTAL, SIZES, pct, circles, elementShape, maskMode, saveColors } from './state.js';
+import { NS, SLOT, COLS, ROWS, TOTAL, SIZES, pct, circles, elementShape, maskMode, saveColors, customShapes, sizeShapes } from './state.js';
 
 export function buildPool() {
   const sum = SIZES.reduce((a, s) => a + (pct[s] || 0), 0);
@@ -33,7 +33,6 @@ export function getCircleInfo(px, py) {
     const rot = (c.rotation ?? 0) * Math.PI / 180;
     if (rx <= 0 || ry <= 0) return;
 
-    // Rotate test point into local (unrotated) mask space
     let ldx = px - ccx;
     let ldy = py - ccy;
     if (rot !== 0) {
@@ -74,20 +73,102 @@ export function getSizeForDepth(depth, zones) {
   return pickFromDist(zones[zones.length - 1].dist);
 }
 
-// SLOT and TOTAL are live ES-module bindings — always current after setSlot()
 export function updateSubtitle() {
   const el = document.querySelector('.subtitle');
   if (el) el.textContent = `1000×1000 · ${TOTAL.toLocaleString()} slots · ${SLOT}px grid`;
 }
 
-export function generate() {
+// ── CSS-based color update (no re-render) ─────────────────────────────────────
+// Builds a <style> block inside the artboard that drives all element colors.
+// Call this instead of generate() when only colors change.
+export function updatePatternColors() {
   const artboard  = document.getElementById('artboard');
-  const rectColor = document.getElementById('rect-color').value;
-  const bgColor   = document.getElementById('bg-color').value;
+  if (!artboard) return;
 
+  const rectColor = document.getElementById('rect-color')?.value || '#000000';
+  const bgColor   = document.getElementById('bg-color')?.value   || '#ffffff';
   saveColors(rectColor, bgColor);
+
+  let styleEl = artboard.querySelector('style[data-co]');
+  if (!styleEl) {
+    styleEl = document.createElementNS(NS, 'style');
+    styleEl.setAttribute('data-co', '1');
+    artboard.insertBefore(styleEl, artboard.firstChild);
+  }
+
+  let css = '';
+
+  // Default fill for all pattern rects and circles (not the mask reference outlines)
+  css += `#artboard rect:not([data-reference]),#artboard circle{fill:${rectColor}}\n`;
+
+  // Global CSS vars for each custom shape
+  customShapes.forEach(shape => {
+    if (!shape.colors?.length) return;
+    const vars = shape.colors.map((c, i) => `--c${i}:${shape.colorMap?.[c] || c}`).join(';');
+    css += `#artboard .cs-${shape.id}{${vars}}\n`;
+  });
+
+  // Per-size element-color override (for rect / circle / no-fill use)
+  // and per-size CSS-var overrides for custom shapes
+  SIZES.forEach(size => {
+    if (size === 0) return;
+    const assign  = sizeShapes[String(size)] || {};
+    const shapeId = assign.shapeId || elementShape;
+    const shape   = customShapes.find(s => s.id === shapeId);
+
+    // Element color override
+    const elColor = assign.color;
+    if (elColor) {
+      if (!shape || !shape.colors?.length) {
+        // Built-in or no-fill custom shape: override fill
+        css += `#artboard rect.sz${size},#artboard circle.sz${size},#artboard use.nf.sz${size}{fill:${elColor}}\n`;
+      }
+    }
+
+    // Per-size CSS-var overrides for custom shapes
+    if (shape?.colors?.length && assign.colorOverrides) {
+      const parts = shape.colors
+        .map((orig, i) => assign.colorOverrides[orig] ? `--c${i}:${assign.colorOverrides[orig]}` : '')
+        .filter(Boolean);
+      if (parts.length) {
+        css += `#artboard .cs-${shapeId}.sz${size}{${parts.join(';')}}\n`;
+      }
+    }
+  });
+
+  styleEl.textContent = css;
+}
+
+// ── Full pattern render ───────────────────────────────────────────────────────
+export function generate() {
+  const artboard = document.getElementById('artboard');
+  const bgColor  = document.getElementById('bg-color').value;
+
   artboard.setAttribute('style', `background:${bgColor}`);
   artboard.innerHTML = '';
+
+  // Inject <defs> for used custom shapes
+  const usedCustomIds = new Set();
+  SIZES.forEach(s => {
+    if (s === 0) return;
+    const sid = sizeShapes[String(s)]?.shapeId || elementShape;
+    if (sid !== 'square' && sid !== 'circle') usedCustomIds.add(sid);
+  });
+  if (elementShape !== 'square' && elementShape !== 'circle') usedCustomIds.add(elementShape);
+
+  if (usedCustomIds.size > 0) {
+    const defs = document.createElementNS(NS, 'defs');
+    for (const sid of usedCustomIds) {
+      const shape = customShapes.find(s => s.id === sid);
+      if (!shape) continue;
+      const sym = document.createElementNS(NS, 'symbol');
+      sym.setAttribute('id', `cs_${sid}`);
+      sym.setAttribute('viewBox', shape.viewBox);
+      sym.innerHTML = shape.symbolContent;
+      defs.appendChild(sym);
+    }
+    artboard.appendChild(defs);
+  }
 
   const pool = buildPool();
   let idx = 0;
@@ -104,8 +185,8 @@ export function generate() {
 
       let size;
       if (maskMode === 'reverse') {
-        if (depth < 0) continue;                          // outside all masks → nothing
-        size = getSizeForDepth(100 - depth, circle.zones); // inverted: center = full, edge = zero
+        if (depth < 0) continue;
+        size = getSizeForDepth(100 - depth, circle.zones);
       } else {
         size = depth >= 0 ? getSizeForDepth(depth, circle.zones) : poolSize;
       }
@@ -116,27 +197,53 @@ export function generate() {
       const slotX  = col * SLOT;
       const slotY  = row * SLOT;
 
+      const assign  = sizeShapes[String(size)] || {};
+      const shapeId = assign.shapeId || elementShape;
+
       let el;
-      if (elementShape === 'circle') {
+      if (shapeId === 'circle') {
         el = document.createElementNS(NS, 'circle');
         el.setAttribute('cx', slotX + SLOT / 2);
         el.setAttribute('cy', slotY + SLOT / 2);
         el.setAttribute('r',  size / 2);
-      } else {
+        el.setAttribute('class', `sz${size}`);
+      } else if (shapeId === 'square') {
         el = document.createElementNS(NS, 'rect');
         el.setAttribute('x',      slotX + offset);
         el.setAttribute('y',      slotY + offset);
         el.setAttribute('width',  size);
         el.setAttribute('height', size);
+        el.setAttribute('class', `sz${size}`);
+      } else {
+        const shape = customShapes.find(s => s.id === shapeId);
+        if (shape) {
+          el = document.createElementNS(NS, 'use');
+          el.setAttribute('href',   `#cs_${shapeId}`);
+          el.setAttribute('x',      slotX + offset);
+          el.setAttribute('y',      slotY + offset);
+          el.setAttribute('width',  size);
+          el.setAttribute('height', size);
+          // Class: cs-{id} for CSS-var targeting, sz{size} for per-size override,
+          // nf (no-fill) if this shape has no detected colors (uses element fill)
+          const cls = `cs-${shapeId} sz${size}` + (shape.colors?.length ? '' : ' nf');
+          el.setAttribute('class', cls);
+        } else {
+          // Deleted shape fallback → rect
+          el = document.createElementNS(NS, 'rect');
+          el.setAttribute('x',      slotX + offset);
+          el.setAttribute('y',      slotY + offset);
+          el.setAttribute('width',  size);
+          el.setAttribute('height', size);
+          el.setAttribute('class', `sz${size}`);
+        }
       }
-      el.setAttribute('fill', rectColor);
-      artboard.appendChild(el);
+      if (el) artboard.appendChild(el);
     }
   }
 
-  // Reference mask outlines — rendered bottom-up so circles[0] sits on top
+  // Reference mask outlines — explicit fill/stroke inline (not driven by CSS)
   for (let i = circles.length - 1; i >= 0; i--) {
-  const c = circles[i];
+    const c = circles[i];
     const w   = c.width  ?? c.size;
     const h   = c.height ?? c.size;
     const rot = c.rotation ?? 0;
@@ -166,6 +273,9 @@ export function generate() {
     el.dataset.maskIndex = String(i);
     artboard.appendChild(el);
   }
+
+  // Apply colors via CSS style block (no inline fill/style on pattern elements)
+  updatePatternColors();
 
   artboard.dispatchEvent(new CustomEvent('pattern:generated'));
   updateSubtitle();

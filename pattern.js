@@ -1,5 +1,5 @@
 import { loadColors } from './components/state.js';
-import { generate }   from './components/generate.js';
+import { generate, updatePatternColors } from './components/generate.js';
 import { initSliders, sliderEls, numEls, updateTotal } from './components/sliders.js';
 import { initMasks, renderCircleList } from './components/masks.js';
 import { initToolbar } from './components/toolbar.js';
@@ -81,7 +81,8 @@ document.getElementById('btn-reset').addEventListener('click', () => {
   updateTotal(); savePct(); generate();
 });
 
-// ── BG color live preview ─────────────────────────────────────────────────────
+// ── Color live preview (no re-render) ─────────────────────────────────────────
+document.getElementById('rect-color').addEventListener('input', () => updatePatternColors());
 document.getElementById('bg-color').addEventListener('input', e => {
   document.getElementById('artboard').setAttribute('style', `background:${e.target.value}`);
 });
