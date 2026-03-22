@@ -1,6 +1,7 @@
 import { SIZES, pct, savePct, elementShape, setElementShape, maskMode, setMaskMode } from './state.js';
 import { generate } from './generate.js';
 import { sliderEls, numEls, updateTotal } from './sliders.js';
+import { push } from './history.js';
 
 function setControlsDisabled(disabled) {
   document.getElementById('controls').classList.toggle('controls-disabled', disabled);
@@ -18,6 +19,7 @@ export function initToolbar() {
   }
   document.querySelectorAll('.mode-btn').forEach(btn => {
     btn.addEventListener('click', () => {
+      push();
       setMaskMode(btn.dataset.mode);
       document.querySelectorAll('.mode-btn').forEach(b =>
         b.classList.toggle('active', b === btn)
@@ -28,6 +30,7 @@ export function initToolbar() {
   });
   // Equalise: all sizes 10%
   document.getElementById('btn-equalise').addEventListener('click', () => {
+    push();
     SIZES.forEach(size => {
       pct[size] = 10;
       sliderEls[size].value = 10;
@@ -38,6 +41,7 @@ export function initToolbar() {
 
   // Dice: random distribution summing to 100%
   document.getElementById('btn-dice').addEventListener('click', () => {
+    push();
     const weights = SIZES.map(() => Math.random());
     const total   = weights.reduce((a, b) => a + b, 0);
     let assigned  = 0;
@@ -58,6 +62,7 @@ export function initToolbar() {
     else btn.classList.remove('active');
 
     btn.addEventListener('click', () => {
+      push();
       setElementShape(btn.dataset.shape);
       document.querySelectorAll('.shape-btn').forEach(b =>
         b.classList.toggle('active', b.dataset.shape === btn.dataset.shape)

@@ -3,7 +3,15 @@ export const SLOT  = 10;
 export const COLS  = 100;
 export const ROWS  = 100;
 export const TOTAL = (COLS * ROWS) / 2;   // 5 000 active cells
-export const SIZES = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+
+const LS_SIZES = 'pattern-designer-sizes';
+export const SIZES = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_SIZES));
+    if (Array.isArray(saved) && saved.length) return saved;
+  } catch (_) {}
+  return [0, 2, 4, 6, 8, 10];
+})();
 
 // ── Size distribution ─────────────────────────────────────────────────────────
 const LS_PCT = 'pattern-designer-pct';
@@ -11,7 +19,12 @@ const LS_PCT = 'pattern-designer-pct';
 export const pct = (() => {
   try {
     const saved = JSON.parse(localStorage.getItem(LS_PCT));
-    if (saved && typeof saved === 'object') return saved;
+    if (saved && typeof saved === 'object') {
+      // Keep only valid SIZES keys, reset others
+      const d = {};
+      SIZES.forEach(s => d[s] = saved[s] ?? 0);
+      return d;
+    }
   } catch (_) {}
   const d = {};
   SIZES.forEach(s => d[s] = s === 10 ? 100 : 0);
@@ -22,16 +35,24 @@ export function savePct() {
   localStorage.setItem(LS_PCT, JSON.stringify(pct));
 }
 
+export function setSizes(newVals) {
+  SIZES.length = 0;
+  newVals.forEach(v => SIZES.push(v));
+  localStorage.setItem(LS_SIZES, JSON.stringify(SIZES));
+  // Sync pct: drop stale keys, initialise new ones to 0
+  Object.keys(pct).forEach(k => { if (!SIZES.includes(+k)) delete pct[k]; });
+  SIZES.forEach(s => { if (pct[s] == null) pct[s] = 0; });
+  savePct();
+}
+
 // ── Mask zone helpers ─────────────────────────────────────────────────────────
-export function makeEqualDist(min, max) {
-  if (max < min) max = min;
-  const sizes = [];
-  for (let s = min; s <= max; s++) sizes.push(s);
+// sizes: array of pixel values, e.g. [0, 2, 4]
+export function makeEqualDist(sizes) {
+  if (!sizes || !sizes.length) return {};
   if (sizes.length === 1) return { [String(sizes[0])]: 100 };
 
-  const has0       = min === 0;
-  const nonZeroCnt = has0 ? sizes.length - 1 : sizes.length;
-  const totalW     = nonZeroCnt + (has0 ? 0.5 : 0);
+  const has0    = sizes.includes(0);
+  const totalW  = sizes.reduce((a, s) => a + (s === 0 ? 0.5 : 1), 0);
 
   const dist = {};
   let assigned = 0;
@@ -39,8 +60,7 @@ export function makeEqualDist(min, max) {
     if (idx === sizes.length - 1) {
       dist[String(s)] = 100 - assigned;
     } else {
-      const w = s === 0 ? 0.5 : 1;
-      const p = Math.round(w / totalW * 100);
+      const p = Math.round((s === 0 ? 0.5 : 1) / totalW * 100);
       dist[String(s)] = p;
       assigned += p;
     }
@@ -49,12 +69,7 @@ export function makeEqualDist(min, max) {
 }
 
 export function defaultZones() {
-  return [
-    { label: '0–30%',   min: 0, max: 0,  dist: makeEqualDist(0, 0)  },
-    { label: '30–50%',  min: 0, max: 3,  dist: makeEqualDist(0, 3)  },
-    { label: '50–80%',  min: 0, max: 7,  dist: makeEqualDist(0, 7)  },
-    { label: '80–100%', min: 0, max: 10, dist: makeEqualDist(0, 10) },
-  ];
+  return [{ max: 100, sizes: [...SIZES], dist: makeEqualDist(SIZES) }];
 }
 
 // ── Masks ─────────────────────────────────────────────────────────────────────
@@ -66,7 +81,17 @@ export const circles = (() => {
     if (Array.isArray(saved) && saved.length) {
       saved.forEach(c => {
         if (!c.zones) c.zones = defaultZones();
-        c.zones = c.zones.map((z, i) => z.dist ? z : defaultZones()[i]);
+        // Migrate old label-based zones or broken zones
+        c.zones = c.zones.map((z, i, arr) => {
+          if (!z.dist || !z.sizes) return { max: Math.round((i + 1) / arr.length * 100), sizes: [...SIZES], dist: makeEqualDist(SIZES) };
+          if (z.max == null) {
+            const m = z.label && z.label.match(/(\d+)%\s*$/);
+            z.max = m ? +m[1] : Math.round((i + 1) / arr.length * 100);
+            delete z.label;
+          }
+          return z;
+        });
+        if (c.zones.length) c.zones[c.zones.length - 1].max = 100;
         if (!c.shape) c.shape = 'circle';
       });
       return saved;

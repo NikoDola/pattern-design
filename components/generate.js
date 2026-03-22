@@ -2,7 +2,7 @@ import { NS, SLOT, COLS, ROWS, TOTAL, SIZES, pct, circles, elementShape, maskMod
 
 export function buildPool() {
   const sum = SIZES.reduce((a, s) => a + (pct[s] || 0), 0);
-  if (sum === 0) return Array(TOTAL).fill(10);
+  if (sum === 0) return Array(TOTAL).fill(SIZES[SIZES.length - 1] ?? 0);
 
   const pool = [];
   SIZES.forEach(size => {
@@ -10,7 +10,7 @@ export function buildPool() {
     for (let i = 0; i < count; i++) pool.push(size);
   });
 
-  const fallback = SIZES.find(s => (pct[s] || 0) > 0) || 10;
+  const fallback = SIZES.find(s => (pct[s] || 0) > 0) ?? SIZES[SIZES.length - 1] ?? 0;
   while (pool.length < TOTAL) pool.push(fallback);
   pool.length = TOTAL;
 
@@ -68,8 +68,10 @@ export function pickFromDist(dist) {
 }
 
 export function getSizeForDepth(depth, zones) {
-  const z = depth < 30 ? zones[0] : depth < 50 ? zones[1] : depth < 80 ? zones[2] : zones[3];
-  return pickFromDist(z.dist);
+  for (const z of zones) {
+    if (depth <= z.max) return pickFromDist(z.dist);
+  }
+  return pickFromDist(zones[zones.length - 1].dist);
 }
 
 export function generate() {
@@ -126,8 +128,9 @@ export function generate() {
     }
   }
 
-  // Reference mask outlines (UI only, stripped on export)
-  circles.forEach((c, i) => {
+  // Reference mask outlines — rendered bottom-up so circles[0] sits on top
+  for (let i = circles.length - 1; i >= 0; i--) {
+  const c = circles[i];
     const w   = c.width  ?? c.size;
     const h   = c.height ?? c.size;
     const rot = c.rotation ?? 0;
@@ -156,7 +159,7 @@ export function generate() {
     el.dataset.reference = 'true';
     el.dataset.maskIndex = String(i);
     artboard.appendChild(el);
-  });
+  }
 
   artboard.dispatchEvent(new CustomEvent('pattern:generated'));
 }

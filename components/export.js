@@ -3,6 +3,7 @@ import { defaultZones } from './state.js';
 import { generate } from './generate.js';
 import { sliderEls, numEls, updateTotal } from './sliders.js';
 import { renderCircleList } from './masks.js';
+import { push } from './history.js';
 
 export function buildExportSVGString({ withBackground = false } = {}) {
   const artboard = document.getElementById('artboard');
@@ -135,7 +136,7 @@ export function initExport() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = ev => {
-      try { applySettingsSnapshot(JSON.parse(ev.target.result)); }
+      try { push(); applySettingsSnapshot(JSON.parse(ev.target.result)); }
       catch (_) { alert('Invalid JSON file.'); }
     };
     reader.readAsText(file);

@@ -1,30 +1,62 @@
-import { circles, saveCircles, defaultZones, makeEqualDist } from './state.js';
+import { circles, saveCircles, defaultZones, makeEqualDist, SIZES } from './state.js';
 import { generate } from './generate.js';
+import { push } from './history.js';
+import { showMaxTooltip } from './utils.js';
 
-// ── Confirm dialog ────────────────────────────────────────────────────────────
-let pendingDelete = null;
+// ── Canvas mask selection ─────────────────────────────────────────────────────
+export let selectedMaskIndex = -1;
 
-export function askConfirm(onYes) {
-  pendingDelete = onYes;
-  document.getElementById('confirm-overlay').classList.add('visible');
+export function setSelectedMaskIndex(i) {
+  selectedMaskIndex = i;
 }
 
-export function initConfirm() {
-  const overlay = document.getElementById('confirm-overlay');
+function highlightSelected() {
+  document.querySelectorAll('#artboard [data-reference]').forEach(el => {
+    const isSelected = +el.dataset.maskIndex === selectedMaskIndex;
+    el.setAttribute('stroke',       isSelected ? '#ff5555' : '#4f8ef7');
+    el.setAttribute('stroke-width', isSelected ? '2'       : '1');
+  });
+}
 
-  document.getElementById('confirm-yes').addEventListener('click', () => {
-    if (pendingDelete) { pendingDelete(); pendingDelete = null; }
-    overlay.classList.remove('visible');
+// Selects a mask, minimizes all others in the sidebar
+export function selectMask(i) {
+  selectedMaskIndex = i;
+  circles.forEach((c, idx) => { c.minimized = idx !== i; });
+  saveCircles();
+  renderCircleList();
+  highlightSelected();
+  document.getElementById('align-bar').style.display = 'flex';
+}
+
+// Clears selection without changing minimized state
+export function deselectMask() {
+  selectedMaskIndex = -1;
+  highlightSelected();
+  document.getElementById('align-bar').style.display = 'none';
+}
+
+export function initCanvasDelete() {
+  const artboard = document.getElementById('artboard');
+
+  // Deselect when clicking empty canvas (ref clicks handled by pan.js)
+  artboard.addEventListener('click', e => {
+    if (!e.target.closest('[data-reference]') && !e.target.closest('[data-gizmo-handle]')) {
+      deselectMask();
+    }
   });
 
-  document.getElementById('confirm-no').addEventListener('click', () => {
-    pendingDelete = null;
-    overlay.classList.remove('visible');
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Delete') return;
+    if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+    if (selectedMaskIndex < 0 || selectedMaskIndex >= circles.length) return;
+    push();
+    circles.splice(selectedMaskIndex, 1);
+    selectedMaskIndex = -1;
+    saveCircles(); renderCircleList(); generate();
   });
 
-  overlay.addEventListener('click', e => {
-    if (e.target === overlay) { pendingDelete = null; overlay.classList.remove('visible'); }
-  });
+  // Re-apply highlight after each generate (outlines are redrawn)
+  artboard.addEventListener('pattern:generated', () => highlightSelected());
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -59,6 +91,7 @@ export function renderCircleList() {
     dupBtn.textContent = 'D';
     dupBtn.title = 'Duplicate';
     dupBtn.addEventListener('click', () => {
+      push();
       const copy = JSON.parse(JSON.stringify(circles[i]));
       copy.x += 20; copy.y += 20;
       circles.push(copy);
@@ -78,7 +111,8 @@ export function renderCircleList() {
     delBtn.className = 'btn-delete-circle';
     delBtn.textContent = '×';
     delBtn.addEventListener('click', () => {
-      askConfirm(() => { circles.splice(i, 1); saveCircles(); renderCircleList(); generate(); });
+      push();
+      circles.splice(i, 1); saveCircles(); renderCircleList(); generate();
     });
 
     headerBtns.appendChild(dupBtn); headerBtns.appendChild(minBtn); headerBtns.appendChild(delBtn);
@@ -92,6 +126,7 @@ export function renderCircleList() {
       btn.className = 'mask-shape-btn' + (c.shape === shape ? ' active' : '');
       btn.textContent = shape === 'circle' ? '● Circle' : '■ Square';
       btn.addEventListener('click', () => {
+        push();
         circles[i].shape = shape; saveCircles(); renderCircleList(); generate();
       });
       shapeRow.appendChild(btn);
@@ -104,26 +139,16 @@ export function renderCircleList() {
     const xLbl = document.createElement('label'); xLbl.textContent = 'X ';
     const xIn  = makeNumInput(c.x);
     xIn.addEventListener('input', () => { circles[i].x = +xIn.value; saveCircles(); generate(); });
+    xIn.addEventListener('change', () => { push(); });
     xLbl.appendChild(xIn);
 
     const yLbl = document.createElement('label'); yLbl.textContent = 'Y ';
     const yIn  = makeNumInput(c.y);
     yIn.addEventListener('input', () => { circles[i].y = +yIn.value; saveCircles(); generate(); });
+    yIn.addEventListener('change', () => { push(); });
     yLbl.appendChild(yIn);
 
-    const centerBtn = document.createElement('button');
-    centerBtn.className = 'btn-center-mask';
-    centerBtn.textContent = '⊕';
-    centerBtn.title = 'Center on canvas';
-    centerBtn.addEventListener('click', () => {
-      const mw = circles[i].width  ?? circles[i].size;
-      const mh = circles[i].height ?? circles[i].size;
-      circles[i].x = (1000 - mw) / 2;
-      circles[i].y = (1000 - mh) / 2;
-      saveCircles(); renderCircleList(); generate();
-    });
-
-    xyRow.appendChild(xLbl); xyRow.appendChild(yLbl); xyRow.appendChild(centerBtn);
+    xyRow.appendChild(xLbl); xyRow.appendChild(yLbl);
 
     // W / H
     const whRow = document.createElement('div');
@@ -135,6 +160,7 @@ export function renderCircleList() {
       circles[i].width = +wIn.value || 1;
       saveCircles(); generate();
     });
+    wIn.addEventListener('change', () => { push(); });
     wLbl.appendChild(wIn);
     const hLbl = document.createElement('label'); hLbl.textContent = 'H ';
     const hIn  = makeNumInput(c.height ?? c.size, { min: 1 });
@@ -143,6 +169,7 @@ export function renderCircleList() {
       circles[i].height = +hIn.value || 1;
       saveCircles(); generate();
     });
+    hIn.addEventListener('change', () => { push(); });
     hLbl.appendChild(hIn);
     whRow.appendChild(wLbl); whRow.appendChild(hLbl);
 
@@ -151,89 +178,167 @@ export function renderCircleList() {
     rotLbl.className = 'full-label'; rotLbl.textContent = 'Rotate° ';
     const rotIn = makeNumInput(c.rotation ?? 0);
     rotIn.addEventListener('input', () => { circles[i].rotation = +rotIn.value; saveCircles(); generate(); });
+    rotIn.addEventListener('change', () => { push(); });
     rotLbl.appendChild(rotIn);
 
     // Zone cards
     const zoneWrap = document.createElement('div');
     zoneWrap.className = 'zone-wrap';
 
-    c.zones.forEach((z, zi) => {
-      const card = document.createElement('div');
-      card.className = 'zone-card';
+    function buildZoneCards() {
+      zoneWrap.innerHTML = '';
 
-      const zlbl = document.createElement('div');
-      zlbl.className = 'zone-card-label';
-      zlbl.textContent = z.label;
-      card.appendChild(zlbl);
+      c.zones.forEach((z, zi) => {
+        const isLast = zi === c.zones.length - 1;
+        const fromVal = zi === 0 ? 0 : c.zones[zi - 1].max;
 
-      const mmRow = document.createElement('div');
-      mmRow.className = 'zone-mm-row';
+        const card = document.createElement('div');
+        card.className = 'zone-card';
 
-      const minLbl = document.createElement('label'); minLbl.textContent = 'Min ';
-      const minIn  = makeNumInput(z.min, { min: 0, max: 10, cls: 'zone-input' });
-      minLbl.appendChild(minIn);
+        // ── Card header: range + delete ───────────────────────────────────────
+        const cardHeader = document.createElement('div');
+        cardHeader.className = 'zone-card-header';
 
-      const maxLbl = document.createElement('label'); maxLbl.textContent = 'Max ';
-      const maxIn  = makeNumInput(z.max, { min: 0, max: 10, cls: 'zone-input' });
-      maxLbl.appendChild(maxIn);
+        const rangeWrap = document.createElement('div');
+        rangeWrap.className = 'zone-range-wrap';
 
-      mmRow.appendChild(minLbl); mmRow.appendChild(maxLbl);
-      card.appendChild(mmRow);
+        const fromSpan = document.createElement('span');
+        fromSpan.className = 'zone-range-from';
+        fromSpan.textContent = fromVal + ' – ';
 
-      const distWrap   = document.createElement('div');
-      distWrap.className = 'zone-dist-wrap';
+        rangeWrap.appendChild(fromSpan);
 
-      const zoneWarning = document.createElement('div');
-      zoneWarning.className = 'zone-total-warn';
+        if (isLast) {
+          const toSpan = document.createElement('span');
+          toSpan.className = 'zone-range-to-fixed';
+          toSpan.textContent = '100%';
+          rangeWrap.appendChild(toSpan);
+        } else {
+          const maxIn = document.createElement('input');
+          maxIn.type = 'number';
+          maxIn.className = 'zone-max-input';
+          maxIn.value = z.max;
+          maxIn.min = fromVal + 1;
+          maxIn.max = 99;
+          maxIn.addEventListener('change', () => {
+            const nextMax = isLast ? 100 : (c.zones[zi + 1]?.max ?? 100);
+            const prevMax = zi === 0 ? 0 : c.zones[zi - 1].max;
+            let v = Math.max(prevMax + 1, Math.min(nextMax - 1, +maxIn.value || prevMax + 1));
+            maxIn.value = v;
+            push();
+            circles[i].zones[zi].max = v;
+            saveCircles(); buildZoneCards(); generate();
+          });
+          const pctSpan = document.createElement('span');
+          pctSpan.className = 'zone-range-pct';
+          pctSpan.textContent = '%';
+          rangeWrap.appendChild(maxIn);
+          rangeWrap.appendChild(pctSpan);
+        }
 
-      function updateZoneWarning() {
-        const zd  = circles[i].zones[zi];
-        const sum = Object.values(zd.dist).reduce((a, b) => a + (+b || 0), 0);
-        zoneWarning.textContent = `Total: ${sum}%`;
-        zoneWarning.className   = 'zone-total-warn' + (sum > 100 ? ' warn-over' : sum === 100 ? ' warn-exact' : '');
-      }
+        const delZoneBtn = document.createElement('span');
+        delZoneBtn.className = 'btn-del-zone' + (c.zones.length <= 1 ? ' disabled' : '');
+        delZoneBtn.textContent = '×';
+        delZoneBtn.title = 'Delete zone';
+        delZoneBtn.addEventListener('click', () => {
+          if (circles[i].zones.length <= 1) return;
+          push();
+          circles[i].zones.splice(zi, 1);
+          circles[i].zones[circles[i].zones.length - 1].max = 100;
+          saveCircles(); buildZoneCards(); generate();
+        });
 
-      function renderDistRows() {
-        distWrap.innerHTML = '';
+        cardHeader.appendChild(rangeWrap);
+        cardHeader.appendChild(delZoneBtn);
+        card.appendChild(cardHeader);
+
+        // ── Sizes input ───────────────────────────────────────────────────────
+        const sizesRow = document.createElement('div');
+        sizesRow.className = 'zone-sizes-row';
+        const sizesLbl = document.createElement('label');
+        sizesLbl.textContent = 'Sizes ';
+        const sizesIn = document.createElement('input');
+        sizesIn.type = 'text';
+        sizesIn.className = 'zone-sizes-input';
+        sizesIn.value = (z.sizes || SIZES).join(', ');
+        sizesIn.placeholder = '0, 2, 4, 6';
+        sizesIn.addEventListener('change', () => {
+          const vals = sizesIn.value.split(',')
+            .map(v => +v.trim())
+            .filter(v => SIZES.includes(v));
+          const unique = [...new Set(vals)].sort((a, b) => a - b);
+          if (!unique.length) { sizesIn.value = circles[i].zones[zi].sizes.join(', '); return; }
+          push();
+          circles[i].zones[zi].sizes = unique;
+          circles[i].zones[zi].dist  = makeEqualDist(unique);
+          sizesIn.value = unique.join(', ');
+          saveCircles(); buildZoneCards(); generate();
+        });
+        sizesLbl.appendChild(sizesIn);
+        sizesRow.appendChild(sizesLbl);
+        card.appendChild(sizesRow);
+
+        // ── Distribution rows ─────────────────────────────────────────────────
+        const distWrap = document.createElement('div');
+        distWrap.className = 'zone-dist-wrap';
+
+        const zoneWarning = document.createElement('div');
+        zoneWarning.className = 'zone-total-warn';
+
+        function updateZoneWarning() {
+          const zd  = circles[i].zones[zi];
+          const sum = Object.values(zd.dist).reduce((a, b) => a + (+b || 0), 0);
+          zoneWarning.textContent = `Total: ${sum}%`;
+          zoneWarning.className   = 'zone-total-warn' + (sum > 100 ? ' warn-over' : sum === 100 ? ' warn-exact' : '');
+        }
+
         const zd = circles[i].zones[zi];
-        for (let s = zd.min; s <= zd.max; s++) {
-          const drow  = document.createElement('div');
+        (zd.sizes || SIZES).forEach(s => {
+          const drow = document.createElement('div');
           drow.className = 'zone-dist-row';
-          const plbl  = document.createElement('span');
+          const plbl = document.createElement('span');
           plbl.className = 'zone-px-label';
           plbl.textContent = s + 'px';
           const pctIn = makeNumInput(zd.dist[String(s)] ?? 0, { min: 0, max: 100, cls: 'zone-input' });
           pctIn.addEventListener('input', () => {
-            circles[i].zones[zi].dist[String(s)] = Math.max(0, Math.min(100, +pctIn.value || 0));
+            const zd = circles[i].zones[zi];
+            const sumOthers = Object.entries(zd.dist)
+              .filter(([k]) => k !== String(s))
+              .reduce((a, [, val]) => a + (+val || 0), 0);
+            const maxVal = Math.max(0, 100 - sumOthers);
+            let v = Math.max(0, Math.min(maxVal, +pctIn.value || 0));
+            if (+pctIn.value > maxVal) { pctIn.value = v; showMaxTooltip(pctIn); }
+            zd.dist[String(s)] = v;
             saveCircles(); generate(); updateZoneWarning();
           });
+          pctIn.addEventListener('change', () => { push(); });
           drow.appendChild(plbl); drow.appendChild(pctIn);
           distWrap.appendChild(drow);
-        }
+        });
         updateZoneWarning();
-      }
-      renderDistRows();
 
-      minIn.addEventListener('change', () => {
-        let v = Math.max(0, Math.min(10, +minIn.value || 0));
-        if (v > circles[i].zones[zi].max) v = circles[i].zones[zi].max;
-        circles[i].zones[zi].min  = v;
-        circles[i].zones[zi].dist = makeEqualDist(v, circles[i].zones[zi].max);
-        saveCircles(); renderCircleList(); generate();
+        card.appendChild(distWrap);
+        card.appendChild(zoneWarning);
+        zoneWrap.appendChild(card);
       });
 
-      maxIn.addEventListener('change', () => {
-        let v = Math.max(0, Math.min(10, +maxIn.value || 0));
-        if (v < circles[i].zones[zi].min) v = circles[i].zones[zi].min;
-        circles[i].zones[zi].max  = v;
-        circles[i].zones[zi].dist = makeEqualDist(circles[i].zones[zi].min, v);
-        saveCircles(); renderCircleList(); generate();
+      // ── Add zone button ───────────────────────────────────────────────────
+      const addZoneBtn = document.createElement('button');
+      addZoneBtn.className = 'btn-add-zone';
+      addZoneBtn.textContent = '+ Add zone';
+      addZoneBtn.addEventListener('click', () => {
+        push();
+        const zones = circles[i].zones;
+        const prevMax = zones.length >= 2 ? zones[zones.length - 2].max : 0;
+        const newMax  = Math.round((prevMax + 100) / 2);
+        const newZone = { max: newMax, sizes: [...(zones[zones.length - 1].sizes || SIZES)], dist: makeEqualDist(zones[zones.length - 1].sizes || SIZES) };
+        zones.splice(zones.length - 1, 0, newZone);
+        saveCircles(); buildZoneCards(); generate();
       });
+      zoneWrap.appendChild(addZoneBtn);
+    }
 
-      card.appendChild(distWrap);
-      card.appendChild(zoneWarning);
-      zoneWrap.appendChild(card);
-    });
+    buildZoneCards();
 
     const collapsible = document.createElement('div');
     collapsible.className = 'circle-collapsible';
@@ -249,10 +354,73 @@ export function renderCircleList() {
   });
 }
 
+function makeAlignIcon(halign, valign) {
+  const W = 18, H = 18, pad = 2, dot = 5;
+  const cx = halign === 'left' ? pad : halign === 'center' ? (W - dot) / 2 : W - pad - dot;
+  const cy = valign === 'top'  ? pad : valign === 'middle' ? (H - dot) / 2 : H - pad - dot;
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('width', W); svg.setAttribute('height', H);
+  const border = document.createElementNS(ns, 'rect');
+  border.setAttribute('x', '0.5'); border.setAttribute('y', '0.5');
+  border.setAttribute('width', W - 1); border.setAttribute('height', H - 1);
+  border.setAttribute('rx', '2'); border.setAttribute('fill', 'none');
+  border.setAttribute('stroke', 'currentColor'); border.setAttribute('stroke-opacity', '0.35');
+  svg.appendChild(border);
+  const dotEl = document.createElementNS(ns, 'rect');
+  dotEl.setAttribute('x', cx); dotEl.setAttribute('y', cy);
+  dotEl.setAttribute('width', dot); dotEl.setAttribute('height', dot);
+  dotEl.setAttribute('rx', '1'); dotEl.setAttribute('fill', 'currentColor');
+  svg.appendChild(dotEl);
+  return svg;
+}
+
+function initAlignBar() {
+  const bar = document.getElementById('align-bar');
+  const ALIGNS = [
+    { h: 'left',   v: 'top',    label: 'Align top-left'     },
+    { h: 'center', v: 'top',    label: 'Align top-center'   },
+    { h: 'right',  v: 'top',    label: 'Align top-right'    },
+    { h: 'left',   v: 'middle', label: 'Align left center'  },
+    { h: 'center', v: 'middle', label: 'Center'             },
+    { h: 'right',  v: 'middle', label: 'Align right center' },
+    { h: 'left',   v: 'bottom', label: 'Align bottom-left'  },
+    { h: 'center', v: 'bottom', label: 'Align bottom-center'},
+    { h: 'right',  v: 'bottom', label: 'Align bottom-right' },
+  ];
+  ALIGNS.forEach(({ h, v, label }) => {
+    const btn = document.createElement('button');
+    btn.className = 'align-btn';
+    btn.appendChild(makeAlignIcon(h, v));
+    const tooltip = document.createElement('div');
+    tooltip.className = 'align-tooltip';
+    tooltip.textContent = label;
+    btn.appendChild(tooltip);
+    btn.addEventListener('click', () => {
+      if (selectedMaskIndex < 0 || selectedMaskIndex >= circles.length) return;
+      push();
+      const c = circles[selectedMaskIndex];
+      const w = c.width ?? c.size;
+      const mh = c.height ?? c.size;
+      if (h === 'left')   c.x = 0;
+      if (h === 'center') c.x = (1000 - w) / 2;
+      if (h === 'right')  c.x = 1000 - w;
+      if (v === 'top')    c.y = 0;
+      if (v === 'middle') c.y = (1000 - mh) / 2;
+      if (v === 'bottom') c.y = 1000 - mh;
+      saveCircles(); renderCircleList(); generate();
+    });
+    bar.appendChild(btn);
+  });
+}
+
 export function initMasks() {
-  initConfirm();
+  initCanvasDelete();
+  initAlignBar();
 
   document.getElementById('btn-add-circle').addEventListener('click', () => {
+    push();
     const sz = 300;
     circles.push({ x: 350, y: 350, size: sz, width: sz, height: sz, rotation: 0, shape: 'circle', zones: defaultZones() });
     saveCircles(); renderCircleList(); generate();

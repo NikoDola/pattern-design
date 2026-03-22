@@ -1,12 +1,14 @@
 import { circles, saveCircles } from './state.js';
 import { generate }             from './generate.js';
-import { renderCircleList }     from './masks.js';
+import { renderCircleList, selectMask, deselectMask } from './masks.js';
 
 const SVG_NS    = 'http://www.w3.org/2000/svg';
 const HANDLE_SZ = 9;
 
 let selectedIndex = null;
 let dragging      = null;
+
+export function setPanSelectedIndex(i) { selectedIndex = i; }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function eff(c) {
@@ -154,6 +156,7 @@ export function initPan() {
       e.preventDefault();
       const idx       = +ref.dataset.maskIndex;
       selectedIndex   = idx;
+      selectMask(idx);
       const c         = circles[idx];
       const { w, h, rot } = eff(c);
       const svgP      = clientToSvg(artboard, e);
@@ -174,6 +177,7 @@ export function initPan() {
 
     } else {
       selectedIndex = null;
+      deselectMask();
       drawGizmo(artboard);
     }
   });
@@ -225,7 +229,10 @@ export function initPan() {
       case 'scale-s': newH = Math.max(1, dragging.origH + 2 * localDy);  break;
       case 'scale-n': newH = Math.max(1, dragging.origH - 2 * localDy);  break;
     }
-    if (e.shiftKey) { const u = Math.max(newW, newH); newW = u; newH = u; }
+    if (e.shiftKey) {
+      const u = (dragging.type === 'scale-n' || dragging.type === 'scale-s') ? newH : newW;
+      newW = u; newH = u;
+    }
 
     c.width    = newW;
     c.height   = newH;
